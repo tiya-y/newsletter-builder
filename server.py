@@ -13,6 +13,11 @@ import os, json, re, html, functools
 from urllib.parse import urljoin
 
 try:
+    import anthropic as anthropic_sdk
+except ImportError:
+    anthropic_sdk = None
+
+try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
@@ -584,6 +589,170 @@ def build_rei_email(data):
 </table>
 </body>
 </html>'''
+
+# ── Auto-generate copy ─────────────────────────────────────────────────────────
+
+def fetch_campaign_content(campaign_id):
+    """Fetch a single Brevo campaign and extract its copy."""
+    try:
+        r = requests.get(f'{BREVO_BASE}/emailCampaigns/{campaign_id}',
+                         headers=brevo_headers(), timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        subject = data.get('subject', '')
+        html_content = data.get('htmlContent', '')
+        sent_date = (data.get('sentDate') or '')[:10]
+
+        # Extract headline, subheadline, intro from HTML
+        soup = BeautifulSoup(html_content, 'html.parser')
+        h1 = soup.find('h1')
+        headline = h1.get_text().strip() if h1 else ''
+
+        subheadline = ''
+        if h1:
+            p = h1.find_next('p')
+            if p:
+                subheadline = p.get_text().strip()
+
+        intro = ''
+        for p in soup.find_all('p'):
+            text = p.get_text().strip()
+            if len(text) > 60 and text != subheadline and 'unsubscribe' not in text.lower():
+                intro = text[:400]
+                break
+
+        return {
+            'subject': subject,
+            'headline': headline,
+            'subheadline': subheadline,
+            'intro': intro,
+            'sent_date': sent_date,
+        }
+    except Exception:
+        return None
+
+def get_past_newsletters(series, limit=3):
+    """Fetch the last N sent newsletters of a given series from Brevo."""
+    name_prefix = 'PO - Newsletter' if series == 'po' else 'Innago Insight - Newsletter'
+    try:
+        r = requests.get(
+            f'{BREVO_BASE}/emailCampaigns?limit=100&status=sent&sort=desc&excludeHtmlContent=true',
+            headers=brevo_headers(), timeout=10
+        )
+        r.raise_for_status()
+        campaigns = r.json().get('campaigns', [])
+        matching = [c for c in campaigns if c.get('name', '').startswith(name_prefix)][:limit]
+        results = []
+        for c in matching:
+            content = fetch_campaign_content(c['id'])
+            if content:
+                results.append(content)
+        return results
+    except Exception:
+        return []
+
+@app.route('/api/generate', methods=['POST'])
+@require_auth
+def generate_copy():
+    if not anthropic_sdk:
+        return jsonify({'error': 'anthropic package not installed'}), 500
+
+    api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+    if not api_key:
+        return jsonify({'error': 'ANTHROPIC_API_KEY not set'}), 500
+
+    data = request.json or {}
+    series = data.get('series', 'po')
+    month = data.get('month', '')
+    year = data.get('year', '')
+    blocks = data.get('blocks', [])
+
+    # Fetch past newsletter examples from Brevo
+    examples = get_past_newsletters(series, limit=3)
+
+    # Build content list from selected blocks
+    content_lines = []
+    for b in blocks:
+        btype = b.get('type', 'article')
+        title = b.get('title', '')
+        cat = b.get('category', '')
+        if btype == 'promo':
+            content_lines.append(f'- [PROMO] {title}')
+        elif btype == 'webinar':
+            content_lines.append(f'- [WEBINAR] {title}')
+        else:
+            content_lines.append(f'- {title}' + (f' ({cat})' if cat else ''))
+
+    content_summary = '\n'.join(content_lines) if content_lines else '(No articles selected yet — write generically for the month)'
+
+    # Series context
+    if series == 'po':
+        series_context = (
+            "This newsletter goes to Innago's property owner users — independent landlords "
+            "and small property managers. Tone: friendly, practical, helpful. Opens with 'Hi there!'."
+        )
+    else:
+        series_context = (
+            "This newsletter goes to the REI Grove community — real estate investors, "
+            "landlords, and property enthusiasts. Tone: informed, professional, community-driven. "
+            "Opens conversationally."
+        )
+
+    # Build examples block
+    if examples:
+        ex_block = '\n\n'.join([
+            f"[{e['sent_date']}]\n"
+            f"Subject: {e['subject']}\n"
+            f"Headline: {e['headline']}\n"
+            f"Subheadline: {e['subheadline']}\n"
+            f"Intro: {e['intro']}"
+            for e in examples
+        ])
+        examples_section = f"Here are the last {len(examples)} newsletters to match in tone and style:\n\n{ex_block}"
+    else:
+        examples_section = "No previous newsletters available — write fresh copy."
+
+    prompt = f"""You are writing copy for a monthly email newsletter.
+
+{series_context}
+
+{examples_section}
+
+---
+
+For {month} {year}, the newsletter will feature these articles and content:
+{content_summary}
+
+---
+
+Generate copy for this month's newsletter. Return ONLY valid JSON, no markdown, no explanation:
+
+{{
+  "subject": "< catchy subject line, under 60 chars, 1 emoji OK >",
+  "preview_text": "< preview/preheader text, under 90 chars >",
+  "headline": "< email header headline, 4-7 words >",
+  "subheadline": "< 1 short sentence describing the month's theme >",
+  "intro": "< 2-3 sentence intro paragraph, warm and conversational, 'Hi there!' opening for PO series >"
+}}"""
+
+    try:
+        client = anthropic_sdk.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=600,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        raw = msg.content[0].text.strip()
+        # Strip markdown fences if present
+        raw = re.sub(r'^```[a-z]*\n?', '', raw)
+        raw = re.sub(r'\n?```$', '', raw)
+        result = json.loads(raw)
+        result['_examples_used'] = f'{len(examples)} past newsletters' if examples else 'no history found'
+        return jsonify(result)
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'Failed to parse AI response: {e}', 'raw': raw}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # ── Preview endpoint ───────────────────────────────────────────────────────────
 

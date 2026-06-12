@@ -212,6 +212,13 @@ body { font-family: 'Poppins', sans-serif; background: #F4F5F7; color: #2E3B47; 
     </div>
 
     <div class="divider"></div>
+
+    <button class="btn btn-primary" id="generateBtn" onclick="generateCopy()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;">
+      <span id="generateBtnIcon">✨</span> Auto-generate copy
+    </button>
+    <div id="generateNote" style="font-size:11px;color:#9AA0A6;text-align:center;margin-top:-8px;">Uses previous newsletters + selected articles</div>
+
+    <div class="divider"></div>
     <div class="section-label">Quick Stats</div>
     <div id="stats" style="font-size:12px;color:#9AA0A6;line-height:1.8;">
       <div>Blocks: <strong id="blockCount">0</strong></div>
@@ -682,6 +689,69 @@ async function refreshPreview() {
     frame.srcdoc = html;
   } catch(e) {
     console.error('Preview error:', e);
+  }
+}
+
+async function generateCopy() {
+  const btn = document.getElementById('generateBtn');
+  const icon = document.getElementById('generateBtnIcon');
+  const note = document.getElementById('generateNote');
+
+  btn.disabled = true;
+  icon.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;border-top-color:#fff;display:inline-block;"></span>';
+  note.textContent = 'Pulling past newsletters from Brevo…';
+
+  try {
+    const res = await fetch('/api/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        series,
+        month: document.getElementById('month').value,
+        year: document.getElementById('year').value,
+        blocks,
+      })
+    });
+
+    note.textContent = 'Generating copy…';
+    const data = await res.json();
+
+    if (data.error) {
+      toast('Generation failed: ' + data.error, 'error');
+      note.textContent = data.error.includes('ANTHROPIC_API_KEY')
+        ? 'Add ANTHROPIC_API_KEY to your .env or Vercel env vars'
+        : 'Error — check console';
+      return;
+    }
+
+    // Fill in the fields with a brief highlight animation
+    const fields = {
+      subject: data.subject,
+      previewText: data.preview_text,
+      headline: data.headline,
+      subheadline: data.subheadline,
+      intro: data.intro,
+    };
+
+    for (const [id, value] of Object.entries(fields)) {
+      const el = document.getElementById(id);
+      if (el && value) {
+        el.value = value;
+        el.style.background = series === 'po' ? '#EDF3FF' : '#EAF0E8';
+        setTimeout(() => el.style.background = '', 1200);
+      }
+    }
+
+    schedulePreview();
+    toast('Copy generated from ' + (data._examples_used || 'previous newsletters'), 'success');
+    note.textContent = 'Generated! Edit any field then refresh preview.';
+
+  } catch(e) {
+    toast(e.message, 'error');
+    note.textContent = 'Uses previous newsletters + selected articles';
+  } finally {
+    btn.disabled = false;
+    icon.textContent = '✨';
   }
 }
 
