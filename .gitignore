@@ -1,0 +1,17 @@
+# Local config (has API keys — never commit)
+.env
+config.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Vercel
+.vercel/
+
+# macOS
+.DS_Store

@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Newsletter Builder</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Poppins', sans-serif; background: #F4F5F7; color: #2E3B47; font-size: 14px; }
+
+/* Layout */
+.app { display: grid; grid-template-columns: 320px 1fr; grid-template-rows: 56px 1fr; min-height: 100vh; }
+.topbar { grid-column: 1 / -1; background: #fff; border-bottom: 1px solid #E7E7E7; display: flex; align-items: center; padding: 0 24px; gap: 16px; z-index: 10; }
+.topbar-logo { font-size: 16px; font-weight: 700; color: #2E3B47; display: flex; align-items: center; gap: 8px; }
+.topbar-logo span { background: #2676FF; color: #fff; border-radius: 6px; padding: 2px 8px; font-size: 13px; }
+.topbar-actions { margin-left: auto; display: flex; gap: 10px; }
+
+/* Series toggle */
+.series-toggle { display: flex; gap: 0; border: 1px solid #E7E7E7; border-radius: 8px; overflow: hidden; }
+.series-btn { padding: 6px 18px; background: #fff; border: none; cursor: pointer; font-family: 'Poppins', sans-serif; font-size: 13px; font-weight: 500; color: #69727A; transition: all 0.15s; }
+.series-btn.active[data-series="po"] { background: #2676FF; color: #fff; }
+.series-btn.active[data-series="rei"] { background: #26463D; color: #fff; }
+.series-btn:not(.active):hover { background: #F4F5F7; }
+
+/* Sidebar */
+.sidebar { background: #fff; border-right: 1px solid #E7E7E7; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: #9AA0A6; margin-bottom: 6px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 12px; font-weight: 500; color: #69727A; }
+.field input, .field textarea, .field select { border: 1px solid #E7E7E7; border-radius: 7px; padding: 8px 11px; font-family: 'Poppins', sans-serif; font-size: 13px; color: #2E3B47; outline: none; transition: border-color 0.15s; width: 100%; background: #fff; }
+.field input:focus, .field textarea:focus, .field select:focus { border-color: #2676FF; }
+.field textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+.month-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.divider { height: 1px; background: #F0F0F0; }
+
+/* Main panel */
+.main { display: grid; grid-template-columns: 1fr 440px; overflow: hidden; }
+.builder { overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+.preview-panel { background: #F4F5F7; border-left: 1px solid #E7E7E7; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+
+/* Content source tabs */
+.tabs { display: flex; gap: 0; border: 1px solid #E7E7E7; border-radius: 8px; overflow: hidden; background: #fff; }
+.tab { padding: 8px 16px; background: #fff; border: none; cursor: pointer; font-family: 'Poppins', sans-serif; font-size: 12px; font-weight: 500; color: #69727A; transition: all 0.15s; flex: 1; text-align: center; }
+.tab.active { background: #F0F5FF; color: #2676FF; border-bottom: 2px solid #2676FF; }
+.tab.active.rei-active { background: #EAF0E8; color: #26463D; border-bottom-color: #57823C; }
+.tab-content { display: none; }
+.tab-content.active { display: flex; flex-direction: column; gap: 10px; }
+
+/* Article cards */
+.article-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-height: 420px; overflow-y: auto; }
+.article-card { border: 1px solid #E7E7E7; border-radius: 8px; overflow: hidden; background: #fff; cursor: pointer; transition: all 0.15s; }
+.article-card:hover { border-color: #2676FF; box-shadow: 0 2px 8px rgba(38,118,255,0.12); }
+.article-card.rei-hover:hover { border-color: #57823C; box-shadow: 0 2px 8px rgba(87,130,60,0.12); }
+.article-card img { width: 100%; height: 90px; object-fit: cover; display: block; }
+.article-card-body { padding: 10px 12px 12px; }
+.article-card-cat { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #2676FF; margin-bottom: 4px; }
+.article-card-cat.rei { color: #57823C; }
+.article-card-title { font-size: 13px; font-weight: 600; color: #2E3B47; line-height: 1.35; margin-bottom: 6px; }
+.article-card-desc { font-size: 11px; color: #69727A; line-height: 1.4; }
+.article-card-add { display: block; margin: 8px 12px 10px; background: #F0F5FF; color: #2676FF; border: none; border-radius: 5px; padding: 5px 0; font-family: 'Poppins', sans-serif; font-size: 11px; font-weight: 600; cursor: pointer; width: calc(100% - 24px); text-align: center; }
+.article-card-add:hover { background: #2676FF; color: #fff; }
+.article-card-add.rei { background: #EAF0E8; color: #57823C; }
+.article-card-add.rei:hover { background: #57823C; color: #fff; }
+
+/* URL / Custom block forms */
+.url-form, .custom-form { background: #fff; border: 1px solid #E7E7E7; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.url-row { display: flex; gap: 8px; }
+.url-row input { flex: 1; border: 1px solid #E7E7E7; border-radius: 7px; padding: 8px 11px; font-family: 'Poppins', sans-serif; font-size: 13px; outline: none; }
+.url-row input:focus { border-color: #2676FF; }
+.btn { border: none; border-radius: 7px; padding: 8px 18px; font-family: 'Poppins', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.btn-primary { background: #2676FF; color: #fff; }
+.btn-primary:hover { background: #1a5fd9; }
+.btn-primary.rei { background: #57823C; }
+.btn-primary.rei:hover { background: #3b5a27; }
+.btn-secondary { background: #F4F5F7; color: #2E3B47; }
+.btn-secondary:hover { background: #E7E7E7; }
+.btn-danger { background: #fff; color: #FF6D5A; border: 1px solid #ffd5cf; }
+.btn-danger:hover { background: #fff0ee; }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn-lg { padding: 11px 28px; font-size: 14px; }
+
+/* Fetched URL preview */
+.url-preview { background: #F8F9FB; border: 1px solid #E7E7E7; border-radius: 7px; padding: 12px; display: none; }
+.url-preview img { width: 100%; height: 120px; object-fit: cover; border-radius: 5px; margin-bottom: 10px; display: block; }
+.url-preview-title { font-size: 13px; font-weight: 600; color: #2E3B47; margin-bottom: 4px; }
+.url-preview-desc { font-size: 12px; color: #69727A; line-height: 1.4; }
+
+/* Builder blocks */
+.blocks-header { display: flex; align-items: center; justify-content: space-between; }
+.blocks-list { display: flex; flex-direction: column; gap: 8px; min-height: 60px; }
+.block-item { background: #fff; border: 1px solid #E7E7E7; border-radius: 8px; padding: 12px 14px; display: flex; align-items: flex-start; gap: 10px; cursor: grab; transition: box-shadow 0.15s; }
+.block-item:active { cursor: grabbing; }
+.block-item.dragging { opacity: 0.5; box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+.block-type-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-radius: 4px; padding: 2px 7px; flex-shrink: 0; margin-top: 2px; }
+.badge-article { background: #EDF3FF; color: #2676FF; }
+.badge-promo { background: #F3EDFF; color: #8A47DF; }
+.badge-webinar { background: #EAF0E8; color: #57823C; }
+.block-info { flex: 1; min-width: 0; }
+.block-title { font-size: 13px; font-weight: 600; color: #2E3B47; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.block-url { font-size: 11px; color: #9AA0A6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.block-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.block-drag { color: #C4C8CC; font-size: 16px; cursor: grab; padding: 2px 4px; flex-shrink: 0; }
+.empty-state { text-align: center; padding: 32px; color: #9AA0A6; font-size: 13px; border: 2px dashed #E7E7E7; border-radius: 8px; }
+
+/* Preview panel */
+.preview-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: #9AA0A6; }
+.preview-iframe-wrap { background: #fff; border: 1px solid #E7E7E7; border-radius: 8px; overflow: hidden; flex: 1; min-height: 500px; position: relative; }
+.preview-iframe-wrap iframe { width: 100%; height: 100%; border: none; min-height: 500px; }
+.preview-actions { display: flex; gap: 8px; }
+.preview-loading { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center; font-size: 13px; color: #9AA0A6; display: none; }
+
+/* Push modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; display: none; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: #fff; border-radius: 12px; padding: 28px; width: 500px; max-width: 95vw; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 8px 40px rgba(0,0,0,0.15); }
+.modal-title { font-size: 18px; font-weight: 700; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.list-selector { max-height: 180px; overflow-y: auto; border: 1px solid #E7E7E7; border-radius: 7px; }
+.list-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #F0F0F0; cursor: pointer; }
+.list-item:last-child { border-bottom: none; }
+.list-item:hover { background: #F8F9FB; }
+.list-item input[type=checkbox] { accent-color: #2676FF; }
+.list-name { font-size: 13px; font-weight: 500; }
+.list-count { font-size: 11px; color: #9AA0A6; margin-left: auto; }
+
+/* Settings modal */
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* Toast */
+.toast { position: fixed; bottom: 24px; right: 24px; background: #2E3B47; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 13px; z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.toast.success { background: #44D7B6; color: #fff; }
+.toast.error { background: #FF6D5A; color: #fff; }
+
+/* Loading spinner */
+.spinner { width: 20px; height: 20px; border: 2px solid #E7E7E7; border-top-color: #2676FF; border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-row { display: flex; align-items: center; gap: 10px; color: #9AA0A6; font-size: 13px; padding: 12px; }
+
+/* Custom block form fields */
+.promo-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="topbar-logo">
+      <span>🗞</span> Newsletter Builder
+    </div>
+    <div class="series-toggle">
+      <button class="series-btn active" data-series="po" onclick="setSeries('po')">PO (Innago)</button>
+      <button class="series-btn" data-series="rei" onclick="setSeries('rei')">REI Grove</button>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-secondary btn-sm" onclick="openSettings()">⚙ Settings</button>
+      <button class="btn btn-secondary btn-sm" onclick="refreshPreview()">↻ Refresh Preview</button>
+      <button class="btn btn-primary btn-sm" id="pushBtn" onclick="openPushModal()">Push to Brevo →</button>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div>
+      <div class="section-label">Newsletter Setup</div>
+    </div>
+
+    <div class="month-row">
+      <div class="field">
+        <label>Month</label>
+        <select id="month">
+          <option>January</option><option>February</option><option>March</option>
+          <option>April</option><option>May</option><option>June</option>
+          <option>July</option><option>August</option><option>September</option>
+          <option>October</option><option>November</option><option>December</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Year</label>
+        <input type="number" id="year" value="2026" min="2020" max="2030">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Subject Line</label>
+      <input type="text" id="subject" placeholder="Your June Update 📬">
+    </div>
+
+    <div class="field">
+      <label>Preview Text</label>
+      <input type="text" id="previewText" placeholder="What's inside this month...">
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-label">Email Content</div>
+
+    <div class="field">
+      <label>Headline</label>
+      <input type="text" id="headline" placeholder="Your June Newsletter">
+    </div>
+
+    <div class="field">
+      <label>Subheadline</label>
+      <input type="text" id="subheadline" placeholder="What's new this month">
+    </div>
+
+    <div class="field">
+      <label>Intro Paragraph</label>
+      <textarea id="intro" placeholder="Hi there! Here's what we've got for you this month..."></textarea>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-label">Quick Stats</div>
+    <div id="stats" style="font-size:12px;color:#9AA0A6;line-height:1.8;">
+      <div>Blocks: <strong id="blockCount">0</strong></div>
+      <div>Articles: <strong id="articleBlockCount">0</strong></div>
+      <div>Promos: <strong id="promoBlockCount">0</strong></div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Builder column -->
+    <div class="builder">
+
+      <!-- Content source -->
+      <div>
+        <div class="blocks-header" style="margin-bottom:12px;">
+          <div style="font-size:15px;font-weight:700;">Add Content</div>
+        </div>
+        <div class="tabs" id="tabBar">
+          <button class="tab active" onclick="switchTab('browse')">Browse Articles</button>
+          <button class="tab" onclick="switchTab('url')">Paste URL</button>
+          <button class="tab" onclick="switchTab('promo')">Custom Promo</button>
+          <button class="tab" onclick="switchTab('webinar')">Webinars</button>
+        </div>
+      </div>
+
+      <!-- Browse tab -->
+      <div class="tab-content active" id="tab-browse">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="text" id="articleSearch" placeholder="Search articles..." style="flex:1;min-width:140px;border:1px solid #E7E7E7;border-radius:7px;padding:8px 11px;font-family:Poppins,sans-serif;font-size:13px;outline:none;" oninput="filterArticles()">
+          <select id="categoryFilter" onchange="filterArticles()" style="border:1px solid #E7E7E7;border-radius:7px;padding:8px 10px;font-family:Poppins,sans-serif;font-size:13px;color:#2E3B47;outline:none;background:#fff;">
+            <option value="">All categories</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="loadArticles()">↻</button>
+        </div>
+        <div style="font-size:11px;color:#9AA0A6;" id="articleCountLabel"></div>
+        <div class="article-grid" id="articleGrid">
+          <div class="loading-row" style="grid-column:1/-1;">
+            <div class="spinner"></div> Loading articles...
+          </div>
+        </div>
+      </div>
+
+      <!-- URL tab -->
+      <div class="tab-content" id="tab-url">
+        <div class="url-form">
+          <div class="field"><label>Paste any article URL</label></div>
+          <div class="url-row">
+            <input type="url" id="urlInput" placeholder="https://innago.com/blog/..." onkeydown="if(event.key==='Enter') fetchUrl()">
+            <button class="btn btn-primary" onclick="fetchUrl()" id="fetchBtn">Fetch</button>
+          </div>
+          <div class="url-preview" id="urlPreview">
+            <img id="urlPreviewImg" src="" alt="" style="display:none;">
+            <div class="url-preview-title" id="urlPreviewTitle"></div>
+            <div class="url-preview-desc" id="urlPreviewDesc" style="margin-top:4px;margin-bottom:10px;"></div>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="urlPreviewCat" placeholder="Category (optional)" style="flex:1;border:1px solid #E7E7E7;border-radius:6px;padding:6px 10px;font-size:12px;font-family:Poppins,sans-serif;outline:none;">
+              <button class="btn btn-primary btn-sm" id="addUrlBtn" onclick="addFetchedUrl()">+ Add to Newsletter</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Promo tab -->
+      <div class="tab-content" id="tab-promo">
+        <div class="custom-form">
+          <div class="field"><label>Promo Title</label><input type="text" id="promoTitle" placeholder="Announcing something new..."></div>
+          <div class="field"><label>Description</label><textarea id="promoDesc" placeholder="Tell them what it's about..." style="min-height:80px;"></textarea></div>
+          <div class="promo-fields">
+            <div class="field"><label>CTA Text</label><input type="text" id="promoCTA" placeholder="Learn More"></div>
+            <div class="field"><label>CTA URL</label><input type="url" id="promoURL" placeholder="https://..."></div>
+          </div>
+          <div class="field"><label>Image URL (optional)</label><input type="url" id="promoImg" placeholder="https://..."></div>
+          <button class="btn btn-primary" onclick="addPromoBlock()" style="align-self:flex-start;">+ Add Promo Block</button>
+        </div>
+      </div>
+
+      <!-- Webinar tab -->
+      <div class="tab-content" id="tab-webinar">
+        <div class="article-grid" id="webinarGrid">
+          <div class="loading-row" style="grid-column:1/-1;">
+            <div class="spinner"></div> Loading webinars...
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Newsletter blocks -->
+      <div>
+        <div class="blocks-header" style="margin-bottom:12px;">
+          <div style="font-size:15px;font-weight:700;">Newsletter Blocks</div>
+          <button class="btn btn-secondary btn-sm" onclick="clearBlocks()">Clear all</button>
+        </div>
+        <div class="blocks-list" id="blocksList">
+          <div class="empty-state" id="emptyState">
+            No blocks added yet.<br>Browse articles or paste a URL above.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview panel -->
+    <div class="preview-panel">
+      <div class="preview-label">Email Preview</div>
+      <div class="preview-iframe-wrap">
+        <iframe id="previewFrame" title="Email Preview"></iframe>
+        <div class="preview-loading" id="previewLoading">Generating preview…</div>
+      </div>
+      <div class="preview-actions">
+        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="copyHtml()">Copy HTML</button>
+        <button class="btn btn-primary btn-sm" style="flex:1;" onclick="openPushModal()">Push to Brevo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Push to Brevo modal -->
+<div class="modal-overlay" id="pushModal">
+  <div class="modal">
+    <div class="modal-title">Push to Brevo as Draft</div>
+    <div id="campaignNamePreview" style="font-size:13px;color:#69727A;">Campaign: —</div>
+    <div class="field"><label>Subject (confirm)</label><input type="text" id="modalSubject"></div>
+    <div>
+      <div class="section-label" style="margin-bottom:8px;">Select Recipient List(s)</div>
+      <div class="list-selector" id="listSelector">
+        <div class="loading-row"><div class="spinner"></div> Loading lists…</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closePushModal()">Cancel</button>
+      <button class="btn btn-primary" id="confirmPushBtn" onclick="confirmPush()">Create Draft in Brevo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal" style="width:520px;">
+    <div class="modal-title">⚙ Configuration</div>
+    <div style="font-size:12px;color:#69727A;background:#F4F5F7;border-radius:7px;padding:10px 14px;line-height:1.6;">
+      Config is set via <strong>environment variables</strong> — in Vercel: Project Settings → Environment Variables. For local dev, edit your <code>.env</code> file.
+    </div>
+    <div id="cfgTable" style="display:flex;flex-direction:column;gap:6px;font-size:13px;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeSettings()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let series = 'po';
+let blocks = [];
+let allArticles = [];
+let brevoLists = [];
+let selectedLists = new Set();
+let fetchedUrlData = null;
+let previewDebounce = null;
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  setCurrentMonth();
+  loadArticles();
+  loadWebinars();
+  schedulePreview();
+
+  // Auto-refresh preview on any sidebar change
+  document.getElementById('sidebar').addEventListener('input', () => schedulePreview());
+});
+
+function setCurrentMonth() {
+  const now = new Date();
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('month').value = months[now.getMonth()];
+  document.getElementById('year').value = now.getFullYear();
+}
+
+// ── Series ─────────────────────────────────────────────────────────────────────
+function setSeries(s) {
+  series = s;
+  document.querySelectorAll('.series-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.series-btn[data-series="${s}"]`).classList.add('active');
+
+  const isPo = s === 'po';
+  document.getElementById('pushBtn').style.background = isPo ? '#2676FF' : '#26463D';
+  document.querySelectorAll('.article-card-add').forEach(b => b.className = `article-card-add${isPo ? '' : ' rei'}`);
+  document.querySelectorAll('.article-card-cat').forEach(el => el.className = `article-card-cat${isPo ? '' : ' rei'}`);
+  document.querySelectorAll('.article-card:hover').forEach(c => c.className = `article-card${isPo ? '' : ' rei-hover'}`);
+
+  // Reload articles for the correct source
+  loadArticles();
+  loadWebinars();
+  schedulePreview();
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const names = ['browse','url','promo','webinar'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+}
+
+// ── Article loading ────────────────────────────────────────────────────────────
+async function loadArticles() {
+  const grid = document.getElementById('articleGrid');
+  grid.innerHTML = '<div class="loading-row" style="grid-column:1/-1;"><div class="spinner"></div> Loading articles…</div>';
+  try {
+    // Load categories first (PO only)
+    if (series === 'po') {
+      const catRes = await fetch('/api/articles/categories');
+      const cats = await catRes.json();
+      const sel = document.getElementById('categoryFilter');
+      sel.innerHTML = '<option value="">All categories</option>';
+      cats.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c; opt.textContent = c;
+        sel.appendChild(opt);
+      });
+      sel.style.display = '';
+    } else {
+      document.getElementById('categoryFilter').style.display = 'none';
+    }
+
+    const res = await fetch(`/api/articles?source=${series}`);
+    allArticles = await res.json();
+    if (allArticles[0]?.error) {
+      grid.innerHTML = `<div style="grid-column:1/-1;padding:20px;color:#FF6D5A;font-size:13px;">Failed to load articles: ${allArticles[0].error}. Check blog URL in Settings.</div>`;
+      return;
+    }
+    renderArticles(allArticles);
+  } catch(e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;padding:20px;color:#FF6D5A;font-size:13px;">Server error: ${e.message}</div>`;
+  }
+}
+
+async function loadWebinars() {
+  const grid = document.getElementById('webinarGrid');
+  grid.innerHTML = '<div class="loading-row" style="grid-column:1/-1;"><div class="spinner"></div> Loading webinars…</div>';
+  try {
+    const res = await fetch('/api/webinars');
+    const webinars = await res.json();
+    if (!webinars.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;color:#9AA0A6;font-size:13px;text-align:center;">No webinars found. Set a REI Grove webinars URL in Settings.</div>';
+      return;
+    }
+    grid.innerHTML = '';
+    webinars.forEach(a => grid.appendChild(makeArticleCard(a, 'webinar')));
+  } catch(e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;padding:20px;color:#FF6D5A;font-size:13px;">${e.message}</div>`;
+  }
+}
+
+function filterArticles() {
+  const q = document.getElementById('articleSearch').value.toLowerCase();
+  const cat = document.getElementById('categoryFilter').value.toLowerCase();
+  const filtered = allArticles.filter(a => {
+    const matchQ = !q || a.title?.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q) || a.category?.toLowerCase().includes(q);
+    const matchCat = !cat || a.category?.toLowerCase() === cat;
+    return matchQ && matchCat;
+  });
+  renderArticles(filtered);
+}
+
+function renderArticles(articles) {
+  const grid = document.getElementById('articleGrid');
+  const label = document.getElementById('articleCountLabel');
+  if (!articles.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;color:#9AA0A6;font-size:13px;text-align:center;">No articles found.</div>';
+    label.textContent = '';
+    return;
+  }
+  label.textContent = `${articles.length} article${articles.length !== 1 ? 's' : ''} · sorted by traffic`;
+  grid.innerHTML = '';
+  articles.slice(0, 100).forEach(a => grid.appendChild(makeArticleCard(a, 'article')));
+  if (articles.length > 100) {
+    const more = document.createElement('div');
+    more.style.cssText = 'grid-column:1/-1;padding:10px;color:#9AA0A6;font-size:12px;text-align:center;';
+    more.textContent = `Showing 100 of ${articles.length} — use search or filter to narrow down.`;
+    grid.appendChild(more);
+  }
+}
+
+function makeArticleCard(a, type) {
+  const isRei = series === 'rei';
+  const div = document.createElement('div');
+  div.className = `article-card${isRei ? ' rei-hover' : ''}`;
+  const trafficBadge = (a.traffic && series === 'po')
+    ? `<span style="float:right;font-size:10px;color:#9AA0A6;font-weight:500;">${a.traffic.toLocaleString()} visits</span>`
+    : '';
+  div.innerHTML = `
+    ${a.image ? `<img src="${esc(a.image)}" alt="" onerror="this.style.display='none'">` : ''}
+    <div class="article-card-body">
+      ${a.category ? `<div class="article-card-cat${isRei ? ' rei' : ''}">${esc(a.category)}${trafficBadge}</div>` : trafficBadge ? `<div>${trafficBadge}</div>` : ''}
+      <div class="article-card-title">${esc(a.title)}</div>
+      ${a.description ? `<div class="article-card-desc">${esc(a.description.substring(0,120))}</div>` : ''}
+    </div>
+    <button class="article-card-add${isRei ? ' rei' : ''}" onclick='addBlock(${JSON.stringify({type, ...a})})'>+ Add</button>
+  `;
+  return div;
+}
+
+// ── URL fetching ───────────────────────────────────────────────────────────────
+async function fetchUrl() {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) return;
+  document.getElementById('fetchBtn').textContent = '…';
+  document.getElementById('fetchBtn').disabled = true;
+
+  try {
+    const res = await fetch('/api/fetch-url', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({url})
+    });
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'error'); return; }
+
+    fetchedUrlData = data;
+    const preview = document.getElementById('urlPreview');
+    preview.style.display = 'block';
+
+    const img = document.getElementById('urlPreviewImg');
+    if (data.image) { img.src = data.image; img.style.display = 'block'; }
+    else { img.style.display = 'none'; }
+    document.getElementById('urlPreviewTitle').textContent = data.title;
+    document.getElementById('urlPreviewDesc').textContent = data.description;
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    document.getElementById('fetchBtn').textContent = 'Fetch';
+    document.getElementById('fetchBtn').disabled = false;
+  }
+}
+
+function addFetchedUrl() {
+  if (!fetchedUrlData) return;
+  const cat = document.getElementById('urlPreviewCat').value;
+  addBlock({type: 'article', ...fetchedUrlData, category: cat || fetchedUrlData.category});
+  document.getElementById('urlInput').value = '';
+  document.getElementById('urlPreview').style.display = 'none';
+  fetchedUrlData = null;
+  document.getElementById('urlPreviewCat').value = '';
+}
+
+// ── Promo block ────────────────────────────────────────────────────────────────
+function addPromoBlock() {
+  const title = document.getElementById('promoTitle').value.trim();
+  if (!title) { toast('Please enter a promo title', 'error'); return; }
+  addBlock({
+    type: 'promo',
+    title,
+    description: document.getElementById('promoDesc').value.trim(),
+    cta_text: document.getElementById('promoCTA').value.trim(),
+    cta_url: document.getElementById('promoURL').value.trim(),
+    image: document.getElementById('promoImg').value.trim(),
+  });
+  // Clear form
+  ['promoTitle','promoDesc','promoCTA','promoURL','promoImg'].forEach(id => document.getElementById(id).value = '');
+}
+
+// ── Blocks management ──────────────────────────────────────────────────────────
+function addBlock(block) {
+  blocks.push({...block, _id: Date.now() + Math.random()});
+  renderBlocks();
+  schedulePreview();
+  toast(`"${block.title?.substring(0,40)}" added`, 'success');
+}
+
+function removeBlock(id) {
+  blocks = blocks.filter(b => b._id !== id);
+  renderBlocks();
+  schedulePreview();
+}
+
+function moveBlock(id, dir) {
+  const idx = blocks.findIndex(b => b._id === id);
+  if (dir === -1 && idx === 0) return;
+  if (dir === 1 && idx === blocks.length - 1) return;
+  const tmp = blocks[idx];
+  blocks[idx] = blocks[idx + dir];
+  blocks[idx + dir] = tmp;
+  renderBlocks();
+  schedulePreview();
+}
+
+function clearBlocks() {
+  if (!blocks.length) return;
+  if (!confirm('Clear all blocks?')) return;
+  blocks = [];
+  renderBlocks();
+  schedulePreview();
+}
+
+function renderBlocks() {
+  const list = document.getElementById('blocksList');
+  const empty = document.getElementById('emptyState');
+
+  if (!blocks.length) {
+    list.innerHTML = '';
+    list.appendChild(empty);
+    empty.style.display = '';
+  } else {
+    empty.style.display = 'none';
+    list.innerHTML = '';
+    blocks.forEach((b, i) => {
+      const item = document.createElement('div');
+      item.className = 'block-item';
+      item.innerHTML = `
+        <span class="block-drag">⠿</span>
+        <span class="block-type-badge badge-${b.type}">${b.type}</span>
+        <div class="block-info">
+          <div class="block-title">${esc(b.title)}</div>
+          ${b.url ? `<div class="block-url">${esc(b.url)}</div>` : ''}
+        </div>
+        <div class="block-actions">
+          ${i > 0 ? `<button class="btn btn-secondary btn-sm" onclick="moveBlock(${b._id},-1)" title="Move up">↑</button>` : ''}
+          ${i < blocks.length-1 ? `<button class="btn btn-secondary btn-sm" onclick="moveBlock(${b._id},1)" title="Move down">↓</button>` : ''}
+          <button class="btn btn-danger btn-sm" onclick="removeBlock(${b._id})" title="Remove">✕</button>
+        </div>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  // Update stats
+  document.getElementById('blockCount').textContent = blocks.length;
+  document.getElementById('articleBlockCount').textContent = blocks.filter(b => b.type === 'article').length;
+  document.getElementById('promoBlockCount').textContent = blocks.filter(b => b.type === 'promo').length;
+}
+
+// ── Preview ────────────────────────────────────────────────────────────────────
+function buildPayload() {
+  return {
+    series,
+    month: document.getElementById('month').value,
+    year: document.getElementById('year').value,
+    subject: document.getElementById('subject').value,
+    preview_text: document.getElementById('previewText').value,
+    headline: document.getElementById('headline').value,
+    subheadline: document.getElementById('subheadline').value,
+    intro: document.getElementById('intro').value,
+    blocks,
+  };
+}
+
+function schedulePreview() {
+  clearTimeout(previewDebounce);
+  previewDebounce = setTimeout(refreshPreview, 600);
+}
+
+async function refreshPreview() {
+  try {
+    const res = await fetch('/api/preview', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(buildPayload())
+    });
+    const {html} = await res.json();
+    const frame = document.getElementById('previewFrame');
+    frame.srcdoc = html;
+  } catch(e) {
+    console.error('Preview error:', e);
+  }
+}
+
+async function copyHtml() {
+  try {
+    const res = await fetch('/api/preview', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(buildPayload())
+    });
+    const {html} = await res.json();
+    await navigator.clipboard.writeText(html);
+    toast('HTML copied to clipboard!', 'success');
+  } catch(e) {
+    toast('Copy failed: ' + e.message, 'error');
+  }
+}
+
+// ── Push to Brevo ──────────────────────────────────────────────────────────────
+async function openPushModal() {
+  const modal = document.getElementById('pushModal');
+  modal.classList.add('open');
+
+  const month = document.getElementById('month').value;
+  const year = document.getElementById('year').value;
+  const prefix = series === 'po' ? 'PO - Newsletter' : 'Innago Insight - Newsletter';
+  document.getElementById('campaignNamePreview').textContent = `Campaign: ${prefix} - ${month} ${year}`;
+  document.getElementById('modalSubject').value = document.getElementById('subject').value;
+
+  // Load Brevo lists
+  const sel = document.getElementById('listSelector');
+  sel.innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading lists…</div>';
+  try {
+    const res = await fetch('/api/brevo/lists');
+    brevoLists = await res.json();
+    if (brevoLists.error) {
+      sel.innerHTML = `<div style="padding:12px;color:#FF6D5A;font-size:13px;">${brevoLists.error}. Check your Brevo API key in Settings.</div>`;
+      return;
+    }
+    sel.innerHTML = '';
+    brevoLists.forEach(l => {
+      const item = document.createElement('label');
+      item.className = 'list-item';
+      item.innerHTML = `
+        <input type="checkbox" value="${l.id}" onchange="toggleList(${l.id})">
+        <span class="list-name">${esc(l.name)}</span>
+        <span class="list-count">${l.subscribers.toLocaleString()} contacts</span>
+      `;
+      sel.appendChild(item);
+    });
+  } catch(e) {
+    sel.innerHTML = `<div style="padding:12px;color:#FF6D5A;font-size:13px;">${e.message}</div>`;
+  }
+}
+
+function toggleList(id) {
+  if (selectedLists.has(id)) selectedLists.delete(id);
+  else selectedLists.add(id);
+}
+
+function closePushModal() {
+  document.getElementById('pushModal').classList.remove('open');
+}
+
+async function confirmPush() {
+  const btn = document.getElementById('confirmPushBtn');
+  btn.textContent = 'Creating…';
+  btn.disabled = true;
+
+  const payload = {
+    ...buildPayload(),
+    subject: document.getElementById('modalSubject').value,
+    list_ids: [...selectedLists],
+  };
+
+  try {
+    const res = await fetch('/api/brevo/push', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.error) {
+      toast('Error: ' + data.error.substring(0,120), 'error');
+    } else {
+      closePushModal();
+      toast(`Draft created: "${data.name}" (ID ${data.campaign_id})`, 'success');
+    }
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.textContent = 'Create Draft in Brevo';
+    btn.disabled = false;
+  }
+}
+
+// ── Settings ───────────────────────────────────────────────────────────────────
+async function openSettings() {
+  document.getElementById('settingsModal').classList.add('open');
+  const table = document.getElementById('cfgTable');
+  table.innerHTML = '<div style="color:#9AA0A6;font-size:12px;">Loading…</div>';
+  try {
+    const res = await fetch('/api/config');
+    const cfg = await res.json();
+    const rows = [
+      ['BREVO_API_KEY', cfg.brevo_api_key_masked, cfg.brevo_configured ? '✓' : '✗ NOT SET'],
+      ['PO_SENDER_NAME', cfg.po_sender_name, ''],
+      ['PO_SENDER_EMAIL', cfg.po_sender_email, ''],
+      ['REI_SENDER_NAME', cfg.rei_sender_name, ''],
+      ['REI_SENDER_EMAIL', cfg.rei_sender_email, ''],
+      ['REI_GROVE_BLOG_URL', cfg.rei_grove_blog_url || '(not set)', ''],
+      ['REI_GROVE_WEBINAR_URL', cfg.rei_grove_webinar_url || '(not set)', ''],
+    ];
+    table.innerHTML = rows.map(([k, v, badge]) => `
+      <div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px solid #F0F0F0;">
+        <code style="font-size:11px;color:#8A47DF;flex-shrink:0;width:200px;">${k}</code>
+        <span style="color:#2E3B47;font-size:12px;flex:1;">${esc(v || '')}</span>
+        ${badge ? `<span style="font-size:11px;color:${badge.includes('✓') ? '#44D7B6' : '#FF6D5A'}">${badge}</span>` : ''}
+      </div>`).join('');
+  } catch(e) {
+    table.innerHTML = `<div style="color:#FF6D5A;font-size:12px;">${e.message}</div>`;
+  }
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('open');
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast show${type ? ' '+type : ''}`;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = 'toast', 3500);
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) {
+      overlay.classList.remove('open');
+    }
+  });
+});
+</script>
+</body>
+</html>
