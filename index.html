@@ -33,6 +33,7 @@ body { font-family: 'Poppins', sans-serif; background: #F4F5F7; color: #2E3B47; 
 .field textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
 .month-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .divider { height: 1px; background: #F0F0F0; }
+.hidden { display: none !important; }
 
 /* Main panel */
 .main { display: grid; grid-template-columns: 1fr 440px; overflow: hidden; }
@@ -164,7 +165,7 @@ body { font-family: 'Poppins', sans-serif; background: #F4F5F7; color: #2E3B47; 
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div>
-      <div class="section-label">Newsletter Setup</div>
+      <div class="section-label">Step 1 · Newsletter Setup</div>
     </div>
 
     <div class="month-row">
@@ -183,40 +184,53 @@ body { font-family: 'Poppins', sans-serif; background: #F4F5F7; color: #2E3B47; 
       </div>
     </div>
 
-    <div class="field">
-      <label>Subject Line</label>
-      <input type="text" id="subject" placeholder="Your June Update 📬">
+    <div id="step1Hint" style="font-size:12px;color:#69727A;line-height:1.6;background:#F4F5F7;border-radius:7px;padding:10px 12px;">
+      Add articles, promos, or webinars from the panel on the right. Once this month's content is picked, generate your email copy.
     </div>
 
-    <div class="field">
-      <label>Preview Text</label>
-      <input type="text" id="previewText" placeholder="What's inside this month...">
-    </div>
-
-    <div class="divider"></div>
-    <div class="section-label">Email Content</div>
-
-    <div class="field">
-      <label>Headline</label>
-      <input type="text" id="headline" placeholder="Your June Newsletter">
-    </div>
-
-    <div class="field">
-      <label>Subheadline</label>
-      <input type="text" id="subheadline" placeholder="What's new this month">
-    </div>
-
-    <div class="field">
-      <label>Intro Paragraph</label>
-      <textarea id="intro" placeholder="Hi there! Here's what we've got for you this month..."></textarea>
-    </div>
-
-    <div class="divider"></div>
-
-    <button class="btn btn-primary" id="generateBtn" onclick="generateCopy()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;">
-      <span id="generateBtnIcon">✨</span> Auto-generate copy
+    <button class="btn btn-primary" id="doneContentBtn" onclick="finishSetup()" style="width:100%;">
+      Done Adding Content →
     </button>
-    <div id="generateNote" style="font-size:11px;color:#9AA0A6;text-align:center;margin-top:-8px;">Uses previous newsletters + selected articles</div>
+
+    <div class="divider hidden" id="step2Divider"></div>
+
+    <div id="step2Fields" class="hidden" style="flex-direction:column; gap:16px;">
+      <div class="section-label">Step 2 · Email Copy</div>
+
+      <div class="field">
+        <label>Subject Line</label>
+        <input type="text" id="subject" placeholder="Your June Update 📬">
+      </div>
+
+      <div class="field">
+        <label>Preview Text</label>
+        <input type="text" id="previewText" placeholder="What's inside this month...">
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="field">
+        <label>Headline</label>
+        <input type="text" id="headline" placeholder="Your June Newsletter">
+      </div>
+
+      <div class="field">
+        <label>Subheadline</label>
+        <input type="text" id="subheadline" placeholder="What's new this month">
+      </div>
+
+      <div class="field">
+        <label>Intro Paragraph</label>
+        <textarea id="intro" placeholder="Hi there! Here's what we've got for you this month..."></textarea>
+      </div>
+
+      <button class="btn btn-secondary" id="generateBtn" onclick="generateCopy()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <span id="generateBtnIcon">↻</span> Regenerate copy
+      </button>
+      <div id="generateNote" style="font-size:11px;color:#9AA0A6;text-align:center;margin-top:-8px;">Uses previous newsletters + selected articles</div>
+
+      <button class="btn btn-secondary btn-sm" onclick="backToSetup()" style="width:100%;">← Back to add more content</button>
+    </div>
 
     <div class="divider"></div>
     <div class="section-label">Quick Stats</div>
@@ -417,6 +431,24 @@ function setSeries(s) {
   loadArticles();
   loadWebinars();
   schedulePreview();
+}
+
+// ── Step wizard ────────────────────────────────────────────────────────────────
+function finishSetup() {
+  document.getElementById('step1Hint').classList.add('hidden');
+  document.getElementById('doneContentBtn').classList.add('hidden');
+  document.getElementById('step2Divider').classList.remove('hidden');
+  const step2 = document.getElementById('step2Fields');
+  step2.classList.remove('hidden');
+  step2.style.display = 'flex';
+  generateCopy();
+}
+
+function backToSetup() {
+  document.getElementById('step1Hint').classList.remove('hidden');
+  document.getElementById('doneContentBtn').classList.remove('hidden');
+  document.getElementById('step2Divider').classList.add('hidden');
+  document.getElementById('step2Fields').classList.add('hidden');
 }
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
@@ -751,7 +783,7 @@ async function generateCopy() {
     note.textContent = 'Uses previous newsletters + selected articles';
   } finally {
     btn.disabled = false;
-    icon.textContent = '✨';
+    icon.textContent = '↻';
   }
 }
 
