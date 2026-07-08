@@ -396,6 +396,7 @@ let brevoLists = [];
 let selectedLists = new Set();
 let fetchedUrlData = null;
 let previewDebounce = null;
+const emptyStateEl = document.getElementById('emptyState');
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
@@ -654,7 +655,7 @@ function clearBlocks() {
 
 function renderBlocks() {
   const list = document.getElementById('blocksList');
-  const empty = document.getElementById('emptyState');
+  const empty = emptyStateEl;
 
   if (!blocks.length) {
     list.innerHTML = '';
