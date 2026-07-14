@@ -135,10 +135,11 @@
           <div style="font-size:15px;font-weight:700;">Add Content</div>
         </div>
         <div class="tabs" id="tabBar">
-          <button class="tab active" onclick="switchTab('browse')">Browse Articles</button>
-          <button class="tab" onclick="switchTab('url')">Paste URL</button>
-          <button class="tab" onclick="switchTab('promo')">Custom Promo</button>
-          <button class="tab" onclick="switchTab('webinar')">Webinars</button>
+          <button class="tab active" data-tab="browse" onclick="switchTab('browse')">Browse Articles</button>
+          <button class="tab" data-tab="url" data-series-only="po" onclick="switchTab('url')">Paste URL</button>
+          <button class="tab hidden" data-tab="assets" data-series-only="rei" onclick="switchTab('assets')">Assets</button>
+          <button class="tab" data-tab="promo" onclick="switchTab('promo')">Custom Promo</button>
+          <button class="tab" data-tab="webinar" onclick="switchTab('webinar')">Webinars</button>
         </div>
       </div>
 
@@ -172,6 +173,19 @@
               <button class="btn btn-primary btn-sm" id="addUrlBtn" onclick="addFetchedUrl()">+ Add to Newsletter</button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-assets">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="text" id="assetSearch" placeholder="Search assets..." style="flex:1;min-width:140px;border:1px solid #E7E7E7;border-radius:7px;padding:8px 11px;font-family:Poppins,sans-serif;font-size:13px;outline:none;" oninput="filterAssets()">
+          <select id="assetCategoryFilter" onchange="filterAssets()" style="border:1px solid #E7E7E7;border-radius:7px;padding:8px 10px;font-family:Poppins,sans-serif;font-size:13px;color:#2E3B47;outline:none;background:#fff;">
+            <option value="">All categories</option>
+          </select>
+        </div>
+        <div style="font-size:11px;color:#9AA0A6;" id="assetCountLabel"></div>
+        <div class="article-grid" id="assetGrid">
+          <div class="loading-row" style="grid-column:1/-1;"><div class="spinner"></div> Loading assets...</div>
         </div>
       </div>
 
@@ -238,8 +252,10 @@ window.addEventListener('DOMContentLoaded', () => {
     setCurrentMonth();
   }
 
+  updateTabVisibilityForSeries();
   loadArticles();
   loadWebinars();
+  loadAssets();
   renderBlocks();
   schedulePreview();
 
@@ -271,16 +287,27 @@ function setSeries(s) {
   document.querySelectorAll('.article-card-add').forEach(b => b.className = `article-card-add${isPo ? '' : ' rei'}`);
   document.querySelectorAll('.article-card-cat').forEach(el => el.className = `article-card-cat${isPo ? '' : ' rei'}`);
 
+  updateTabVisibilityForSeries();
   loadArticles();
   loadWebinars();
   saveSetup();
   schedulePreview();
 }
 
+function updateTabVisibilityForSeries() {
+  document.querySelectorAll('[data-series-only]').forEach(el => {
+    el.classList.toggle('hidden', el.dataset.seriesOnly !== series);
+  });
+  // If the tab that was active just got hidden (e.g. "Paste URL" while on REI Grove), fall back
+  const activeTab = document.querySelector('.tab.active');
+  if (activeTab && activeTab.classList.contains('hidden')) {
+    switchTab('browse');
+  }
+}
+
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach((t, i) => {
-    const names = ['browse','url','promo','webinar'];
-    t.classList.toggle('active', names[i] === name);
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === name);
   });
   document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
   document.getElementById(`tab-${name}`).classList.add('active');
@@ -332,6 +359,55 @@ async function loadWebinars() {
   } catch(e) {
     grid.innerHTML = `<div style="grid-column:1/-1;padding:20px;color:#FF6D5A;font-size:13px;">${e.message}</div>`;
   }
+}
+
+// ── REI Grove assets (checklists, spreadsheets, calculators, etc.) ─────────────
+let allAssets = [];
+
+async function loadAssets() {
+  const grid = document.getElementById('assetGrid');
+  grid.innerHTML = '<div class="loading-row" style="grid-column:1/-1;"><div class="spinner"></div> Loading assets…</div>';
+  try {
+    const catRes = await fetch('/api/rei-assets/categories');
+    const cats = await catRes.json();
+    const sel = document.getElementById('assetCategoryFilter');
+    sel.innerHTML = '<option value="">All categories</option>';
+    cats.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      sel.appendChild(opt);
+    });
+
+    const res = await fetch('/api/rei-assets');
+    allAssets = await res.json();
+    renderAssets(allAssets);
+  } catch(e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;padding:20px;color:#FF6D5A;font-size:13px;">Server error: ${e.message}</div>`;
+  }
+}
+
+function filterAssets() {
+  const q = document.getElementById('assetSearch').value.toLowerCase();
+  const cat = document.getElementById('assetCategoryFilter').value.toLowerCase();
+  const filtered = allAssets.filter(a => {
+    const matchQ = !q || a.title?.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q) || a.category?.toLowerCase().includes(q);
+    const matchCat = !cat || a.category?.toLowerCase() === cat;
+    return matchQ && matchCat;
+  });
+  renderAssets(filtered);
+}
+
+function renderAssets(assets) {
+  const grid = document.getElementById('assetGrid');
+  const label = document.getElementById('assetCountLabel');
+  if (!assets.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;color:#9AA0A6;font-size:13px;text-align:center;">No assets found.</div>';
+    label.textContent = '';
+    return;
+  }
+  label.textContent = `${assets.length} asset${assets.length !== 1 ? 's' : ''}`;
+  grid.innerHTML = '';
+  assets.forEach(a => grid.appendChild(makeArticleCard(a, 'article')));
 }
 
 function filterArticles() {

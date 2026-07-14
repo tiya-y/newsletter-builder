@@ -274,6 +274,37 @@ def get_categories():
     cats = sorted(set(a.get('category','') for a in articles if a.get('category','')))
     return jsonify(cats)
 
+ASSETS_FILE = os.path.join(BASE_DIR, 'rei_assets.json')
+
+def load_assets_library():
+    if os.path.exists(ASSETS_FILE):
+        with open(ASSETS_FILE) as f:
+            return json.load(f)
+    return []
+
+@app.route('/api/rei-assets')
+@require_auth
+def get_rei_assets():
+    category = request.args.get('category', '')
+    q = request.args.get('q', '').lower().strip()
+
+    assets = load_assets_library()
+    if category:
+        assets = [a for a in assets if a.get('category', '').lower() == category.lower()]
+    if q:
+        assets = [a for a in assets
+                  if q in a.get('title', '').lower()
+                  or q in a.get('description', '').lower()
+                  or q in a.get('category', '').lower()]
+    return jsonify(assets)
+
+@app.route('/api/rei-assets/categories')
+@require_auth
+def get_rei_asset_categories():
+    assets = load_assets_library()
+    cats = sorted(set(a.get('category', '') for a in assets if a.get('category', '')))
+    return jsonify(cats)
+
 @app.route('/api/fetch-url', methods=['POST'])
 @require_auth
 def fetch_url():
