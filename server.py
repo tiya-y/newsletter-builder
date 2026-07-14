@@ -5,7 +5,7 @@ Serves the frontend and handles article scraping, email generation, and Brevo AP
 Config comes from environment variables (set in Vercel dashboard or local .env file).
 """
 
-from flask import Flask, jsonify, request, send_file, abort, Response
+from flask import Flask, jsonify, request, send_file, abort, Response, redirect
 from flask_cors import CORS
 import requests
 from bs4 import BeautifulSoup
@@ -41,7 +41,7 @@ def get_config():
         'po_sender_name':       os.environ.get('PO_SENDER_NAME', 'Innago'),
         'po_sender_email':      os.environ.get('PO_SENDER_EMAIL', 'newsletter@innago.com'),
         'rei_sender_name':      os.environ.get('REI_SENDER_NAME', 'REI Grove'),
-        'rei_sender_email':     os.environ.get('REI_SENDER_EMAIL', 'newsletter@reig rove.com'),
+        'rei_sender_email':     os.environ.get('REI_SENDER_EMAIL', 'newsletter@reigrove.com'),
     }
 
 # ── Optional password protection ──────────────────────────────────────────────
@@ -651,6 +651,45 @@ def get_past_newsletters(series, limit=3):
     except Exception:
         return []
 
+def get_history_campaigns():
+    """Fetch every PO + REI Grove newsletter campaign (any status) for the History page."""
+    try:
+        r = requests.get(
+            f'{BREVO_BASE}/emailCampaigns?limit=200&sort=desc&excludeHtmlContent=true',
+            headers=brevo_headers(), timeout=15
+        )
+        r.raise_for_status()
+        campaigns = r.json().get('campaigns', [])
+        results = []
+        for c in campaigns:
+            name = c.get('name', '')
+            if name.startswith('PO - Newsletter'):
+                series = 'po'
+            elif name.startswith('Innago Insight - Newsletter'):
+                series = 'rei'
+            else:
+                continue
+            results.append({
+                'id': c.get('id'),
+                'name': name,
+                'subject': c.get('subject', ''),
+                'status': c.get('status', ''),
+                'series': series,
+                'createdAt': (c.get('createdAt') or '')[:10],
+                'sentDate': (c.get('sentDate') or '')[:10] if c.get('sentDate') else None,
+            })
+        return results
+    except Exception as e:
+        return {'error': str(e)}
+
+@app.route('/api/history')
+@require_auth
+def api_history():
+    data = get_history_campaigns()
+    if isinstance(data, dict) and data.get('error'):
+        return jsonify(data), 500
+    return jsonify(data)
+
 @app.route('/api/generate', methods=['POST'])
 @require_auth
 def generate_copy():
@@ -763,12 +802,32 @@ def preview():
     email_html = generate_email_html(data)
     return jsonify({'html': email_html})
 
-# ── Serve frontend ─────────────────────────────────────────────────────────────
+# ── Serve frontend — standard four-page structure ─────────────────────────────
 
 @app.route('/')
 @require_auth
 def index():
-    return send_file(os.path.join(BASE_DIR, 'index.html'))
+    return redirect('/input')
+
+@app.route('/input')
+@require_auth
+def input_page():
+    return send_file(os.path.join(BASE_DIR, 'input.html'))
+
+@app.route('/approve')
+@require_auth
+def approve_page():
+    return send_file(os.path.join(BASE_DIR, 'approve.html'))
+
+@app.route('/history')
+@require_auth
+def history_page():
+    return send_file(os.path.join(BASE_DIR, 'history.html'))
+
+@app.route('/settings')
+@require_auth
+def settings_page():
+    return send_file(os.path.join(BASE_DIR, 'settings.html'))
 
 if __name__ == '__main__':
     print('\n🗞  Newsletter Builder running at http://localhost:5050\n')

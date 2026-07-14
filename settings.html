@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings — Newsletter Builder</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/common.css">
+<style>
+.env-note { font-size: 12px; color: #69727A; background: #F4F5F7; border-radius: 7px; padding: 12px 14px; line-height: 1.6; margin-bottom: 20px; }
+.settings-card { background: #fff; border: 1px solid #E7E7E7; border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+.settings-card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #F0F0F0; }
+.settings-card-header h2 { font-size: 14px; font-weight: 600; color: #2E3B47; }
+.settings-card-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; }
+.settings-row { display: flex; align-items: baseline; gap: 10px; font-size: 13px; }
+.settings-row span { color: #69727A; width: 140px; flex-shrink: 0; }
+.settings-row code { font-size: 12px; color: #2E3B47; }
+.status-pill { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+.status-pill.ok { background: #E6FBF5; color: #0F9D78; }
+.status-pill.warn { background: #FFF8E6; color: #B8860B; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo"><span>🗞</span> Newsletter Builder</div>
+  <nav class="page-nav">
+    <a href="/input" class="nav-link" data-page="input">+ Input</a>
+    <a href="/approve" class="nav-link" data-page="approve">✓ Approve</a>
+    <a href="/history" class="nav-link" data-page="history">🕐 History</a>
+    <a href="/settings" class="nav-link" data-page="settings">⚙ Settings</a>
+  </nav>
+</div>
+
+<div class="page-content">
+  <h1>Settings</h1>
+  <p class="page-subtitle">Connected integrations and sender info.</p>
+
+  <div class="env-note">
+    Config is set via <strong>environment variables</strong> — in Vercel: Project Settings → Environment Variables. For local dev, edit your <code>.env</code> file.
+  </div>
+
+  <div id="cfgGroups">
+    <div class="loading-row"><div class="spinner"></div> Loading settings…</div>
+  </div>
+</div>
+
+<script src="/static/common.js"></script>
+<script>
+window.addEventListener('DOMContentLoaded', loadConfig);
+
+async function loadConfig() {
+  const container = document.getElementById('cfgGroups');
+  try {
+    const res = await fetch('/api/config');
+    const cfg = await res.json();
+
+    const groups = [
+      {
+        name: 'Brevo',
+        configured: cfg.brevo_configured,
+        rows: [['API Key', cfg.brevo_configured ? cfg.brevo_api_key_masked : 'Not set']],
+      },
+      {
+        name: 'PO (Innago) Sender',
+        configured: true,
+        rows: [['Name', cfg.po_sender_name], ['Email', cfg.po_sender_email]],
+      },
+      {
+        name: 'REI Grove Sender',
+        configured: true,
+        rows: [['Name', cfg.rei_sender_name], ['Email', cfg.rei_sender_email]],
+      },
+      {
+        name: 'REI Grove Content Sources',
+        configured: !!cfg.rei_grove_blog_url,
+        rows: [
+          ['Blog URL', cfg.rei_grove_blog_url || 'Not set'],
+          ['Webinar URL', cfg.rei_grove_webinar_url || 'Not set'],
+        ],
+      },
+    ];
+
+    container.innerHTML = groups.map(g => `
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <h2>${esc(g.name)}</h2>
+          <span class="status-pill ${g.configured ? 'ok' : 'warn'}">${g.configured ? '✓ Connected' : '⚠ Not configured'}</span>
+        </div>
+        <div class="settings-card-body">
+          ${g.rows.map(([label, val]) => `
+            <div class="settings-row"><span>${esc(label)}</span><code>${esc(val)}</code></div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    container.innerHTML = `<div style="color:#FF6D5A;font-size:13px;">${esc(e.message)}</div>`;
+  }
+}
+</script>
+</body>
+</html>

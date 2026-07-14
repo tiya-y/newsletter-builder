@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Approve — Newsletter Builder</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/common.css">
+<style>
+.approve-layout { display: grid; grid-template-columns: 1fr 440px; height: calc(100vh - 56px); overflow: hidden; }
+.approve-main { overflow-y: auto; padding: 24px; display: flex; flex-direction: column; align-items: center; }
+.preview-panel { background: #F4F5F7; border-left: 1px solid #E7E7E7; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.preview-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: #9AA0A6; }
+.preview-iframe-wrap { background: #fff; border: 1px solid #E7E7E7; border-radius: 8px; overflow: hidden; flex: 1; min-height: 500px; }
+.preview-iframe-wrap iframe { width: 100%; height: 100%; border: none; min-height: 500px; }
+
+.draft-card { background: #fff; border: 1px solid #E7E7E7; border-radius: 12px; padding: 24px; width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 16px; }
+.draft-card-header { display: flex; align-items: center; gap: 8px; }
+.badge-ai { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; background: #F3EDFF; color: #8A47DF; border-radius: 4px; padding: 3px 8px; }
+.series-pill { font-size: 11px; font-weight: 600; color: #69727A; background: #F4F5F7; border-radius: 999px; padding: 3px 10px; }
+.draft-card-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo"><span>🗞</span> Newsletter Builder</div>
+  <nav class="page-nav">
+    <a href="/input" class="nav-link" data-page="input">+ Input</a>
+    <a href="/approve" class="nav-link" data-page="approve">✓ Approve</a>
+    <a href="/history" class="nav-link" data-page="history">🕐 History</a>
+    <a href="/settings" class="nav-link" data-page="settings">⚙ Settings</a>
+  </nav>
+</div>
+
+<div class="approve-layout">
+  <div class="approve-main">
+
+    <div id="emptyState" class="empty-page-state hidden">
+      <div class="empty-icon">✓</div>
+      <p>Nothing to review.</p>
+      <a href="/input" class="btn btn-primary">Generate something new</a>
+    </div>
+
+    <div id="draftCard" class="draft-card hidden">
+      <div class="draft-card-header">
+        <span class="badge-ai">AI draft</span>
+        <span id="draftSeriesLabel" class="series-pill"></span>
+      </div>
+
+      <div class="field"><label>Subject Line</label><input type="text" id="subject"></div>
+      <div class="field"><label>Preview Text</label><input type="text" id="previewText"></div>
+      <div class="divider"></div>
+      <div class="field"><label>Headline</label><input type="text" id="headline"></div>
+      <div class="field"><label>Subheadline</label><input type="text" id="subheadline"></div>
+      <div class="field"><label>Intro Paragraph</label><textarea id="intro"></textarea></div>
+
+      <div class="draft-card-actions">
+        <button class="btn btn-secondary" id="regenerateBtn" onclick="regenerate()">↻ Regenerate</button>
+        <button class="btn btn-danger" onclick="deleteDraft()">🗑 Delete</button>
+        <button class="btn btn-primary" onclick="openPushModal()" style="margin-left:auto;">Approve →</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="preview-panel">
+    <div class="preview-label">Email Preview</div>
+    <div class="preview-iframe-wrap">
+      <iframe id="previewFrame" title="Email Preview"></iframe>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="copyHtml()">Copy HTML</button>
+  </div>
+</div>
+
+<!-- Push to Brevo modal -->
+<div class="modal-overlay" id="pushModal">
+  <div class="modal">
+    <div class="modal-title">Push to Brevo as Draft</div>
+    <div id="campaignNamePreview" style="font-size:13px;color:#69727A;">Campaign: —</div>
+    <div class="field"><label>Subject (confirm)</label><input type="text" id="modalSubject"></div>
+    <div>
+      <div class="section-label" style="margin-bottom:8px;">Select Recipient List(s)</div>
+      <div class="list-selector" id="listSelector">
+        <div class="loading-row"><div class="spinner"></div> Loading lists…</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closePushModal()">Cancel</button>
+      <button class="btn btn-primary" id="confirmPushBtn" onclick="confirmPush()">Create Draft in Brevo</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="/static/common.js"></script>
+<script>
+let draft = null;
+let dirty = false;
+let brevoLists = [];
+let selectedLists = new Set();
+let previewDebounce = null;
+let saveDebounce = null;
+
+window.addEventListener('DOMContentLoaded', () => {
+  draft = loadDraft();
+  if (!draft || !draft.subject) {
+    document.getElementById('emptyState').classList.remove('hidden');
+    return;
+  }
+
+  document.getElementById('draftCard').classList.remove('hidden');
+  document.getElementById('draftSeriesLabel').textContent = draft.series === 'po' ? 'PO (Innago)' : 'REI Grove';
+  document.getElementById('subject').value = draft.subject || '';
+  document.getElementById('previewText').value = draft.preview_text || '';
+  document.getElementById('headline').value = draft.headline || '';
+  document.getElementById('subheadline').value = draft.subheadline || '';
+  document.getElementById('intro').value = draft.intro || '';
+
+  document.getElementById('draftCard').addEventListener('input', () => {
+    dirty = true;
+    scheduleSave();
+    schedulePreview();
+  });
+
+  if (sessionStorage.getItem('nlb_justGenerated')) {
+    toast('Copy generated — review below.', 'success');
+    sessionStorage.removeItem('nlb_justGenerated');
+  }
+
+  schedulePreview();
+});
+
+function buildPayload() {
+  return {
+    series: draft.series,
+    month: draft.month,
+    year: draft.year,
+    subject: document.getElementById('subject').value,
+    preview_text: document.getElementById('previewText').value,
+    headline: document.getElementById('headline').value,
+    subheadline: document.getElementById('subheadline').value,
+    intro: document.getElementById('intro').value,
+    blocks: draft.blocks || [],
+  };
+}
+
+function scheduleSave() {
+  clearTimeout(saveDebounce);
+  saveDebounce = setTimeout(() => {
+    saveDraft({ ...draft, ...buildPayload() });
+  }, 400);
+}
+
+function schedulePreview() {
+  clearTimeout(previewDebounce);
+  previewDebounce = setTimeout(refreshPreview, 500);
+}
+
+async function refreshPreview() {
+  try {
+    const res = await fetch('/api/preview', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(buildPayload())
+    });
+    const {html} = await res.json();
+    document.getElementById('previewFrame').srcdoc = html;
+  } catch(e) {
+    console.error('Preview error:', e);
+  }
+}
+
+async function regenerate() {
+  if (dirty && !confirm('Regenerate? Your edits will be lost.')) return;
+
+  const btn = document.getElementById('regenerateBtn');
+  btn.disabled = true;
+  btn.textContent = '↻ Regenerating…';
+
+  try {
+    const res = await fetch('/api/generate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ series: draft.series, month: draft.month, year: draft.year, blocks: draft.blocks || [] })
+    });
+    const data = await res.json();
+    if (data.error) { toast('Regeneration failed: ' + data.error, 'error'); return; }
+
+    document.getElementById('subject').value = data.subject;
+    document.getElementById('previewText').value = data.preview_text;
+    document.getElementById('headline').value = data.headline;
+    document.getElementById('subheadline').value = data.subheadline;
+    document.getElementById('intro').value = data.intro;
+
+    dirty = false;
+    saveDraft({ ...draft, ...buildPayload() });
+    schedulePreview();
+    toast('Copy regenerated from ' + (data._examples_used || 'previous newsletters'), 'success');
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Regenerate';
+  }
+}
+
+function deleteDraft() {
+  if (!confirm("Delete this draft? This can't be undone.")) return;
+  clearDraft();
+  window.location.href = '/input';
+}
+
+async function copyHtml() {
+  try {
+    const res = await fetch('/api/preview', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(buildPayload())
+    });
+    const {html} = await res.json();
+    await navigator.clipboard.writeText(html);
+    toast('HTML copied to clipboard!', 'success');
+  } catch(e) {
+    toast('Copy failed: ' + e.message, 'error');
+  }
+}
+
+async function openPushModal() {
+  const modal = document.getElementById('pushModal');
+  modal.classList.add('open');
+
+  const prefix = draft.series === 'po' ? 'PO - Newsletter' : 'Innago Insight - Newsletter';
+  document.getElementById('campaignNamePreview').textContent = `Campaign: ${prefix} - ${draft.month} ${draft.year}`;
+  document.getElementById('modalSubject').value = document.getElementById('subject').value;
+
+  const sel = document.getElementById('listSelector');
+  sel.innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading lists…</div>';
+  try {
+    const res = await fetch('/api/brevo/lists');
+    brevoLists = await res.json();
+    if (brevoLists.error) {
+      sel.innerHTML = `<div style="padding:12px;color:#FF6D5A;font-size:13px;">${brevoLists.error}. Check your Brevo API key in Settings.</div>`;
+      return;
+    }
+    sel.innerHTML = '';
+    brevoLists.forEach(l => {
+      const item = document.createElement('label');
+      item.className = 'list-item';
+      item.innerHTML = `
+        <input type="checkbox" value="${l.id}" onchange="toggleList(${l.id})">
+        <span class="list-name">${esc(l.name)}</span>
+        <span class="list-count">${l.subscribers.toLocaleString()} contacts</span>
+      `;
+      sel.appendChild(item);
+    });
+  } catch(e) {
+    sel.innerHTML = `<div style="padding:12px;color:#FF6D5A;font-size:13px;">${e.message}</div>`;
+  }
+}
+
+function toggleList(id) {
+  if (selectedLists.has(id)) selectedLists.delete(id);
+  else selectedLists.add(id);
+}
+
+function closePushModal() {
+  document.getElementById('pushModal').classList.remove('open');
+}
+
+async function confirmPush() {
+  const btn = document.getElementById('confirmPushBtn');
+  btn.textContent = 'Creating…';
+  btn.disabled = true;
+
+  const payload = {
+    ...buildPayload(),
+    subject: document.getElementById('modalSubject').value,
+    list_ids: [...selectedLists],
+  };
+
+  try {
+    const res = await fetch('/api/brevo/push', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.error) {
+      toast('Error: ' + data.error.substring(0,120), 'error');
+    } else {
+      closePushModal();
+      clearDraft();
+      toast(`Draft created in Brevo: "${data.name}"`, 'success');
+      setTimeout(() => { window.location.href = '/history'; }, 1000);
+    }
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.textContent = 'Create Draft in Brevo';
+    btn.disabled = false;
+  }
+}
+
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+</script>
+</body>
+</html>

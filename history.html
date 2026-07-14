@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>History — Newsletter Builder</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/common.css">
+<style>
+.totals-line { font-size: 13px; color: #69727A; margin-bottom: 16px; }
+.filters-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.filters-row input, .filters-row select { border: 1px solid #E7E7E7; border-radius: 7px; padding: 8px 11px; font-family: 'Poppins', sans-serif; font-size: 13px; outline: none; background: #fff; }
+.filters-row input { flex: 1; min-width: 180px; }
+
+.history-table { background: #fff; border: 1px solid #E7E7E7; border-radius: 10px; overflow: hidden; }
+.history-row { display: grid; grid-template-columns: 1fr 110px 110px 110px 24px; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #F0F0F0; cursor: pointer; }
+.history-row:last-child { border-bottom: none; }
+.history-row:hover { background: #F8F9FB; }
+.history-header { cursor: default; background: #F8F9FB; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #9AA0A6; }
+.history-header:hover { background: #F8F9FB; }
+.history-name { font-size: 13px; font-weight: 600; color: #2E3B47; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-view { text-align: right; color: #9AA0A6; }
+
+.status-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; display: inline-block; }
+.status-draft { background: #FFF8E6; color: #B8860B; }
+.status-sent { background: #E6FBF5; color: #0F9D78; }
+.status-other { background: #F4F5F7; color: #69727A; }
+
+.history-detail { padding: 12px 16px 16px 16px; background: #F8F9FB; border-bottom: 1px solid #F0F0F0; font-size: 12px; color: #69727A; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo"><span>🗞</span> Newsletter Builder</div>
+  <nav class="page-nav">
+    <a href="/input" class="nav-link" data-page="input">+ Input</a>
+    <a href="/approve" class="nav-link" data-page="approve">✓ Approve</a>
+    <a href="/history" class="nav-link" data-page="history">🕐 History</a>
+    <a href="/settings" class="nav-link" data-page="settings">⚙ Settings</a>
+  </nav>
+</div>
+
+<div class="page-content">
+  <h1>History</h1>
+  <p class="page-subtitle">Every newsletter pushed to Brevo — draft or sent, PO and REI Grove.</p>
+
+  <div class="totals-line" id="totalsLine"></div>
+
+  <div class="filters-row">
+    <input id="search" placeholder="Search by subject or campaign name..." oninput="renderTable()">
+    <select id="statusFilter" onchange="renderTable()">
+      <option value="All">All statuses</option>
+      <option value="draft">Draft</option>
+      <option value="sent">Sent</option>
+    </select>
+    <select id="seriesFilter" onchange="renderTable()">
+      <option value="All">All series</option>
+      <option value="po">PO (Innago)</option>
+      <option value="rei">REI Grove</option>
+    </select>
+    <button class="btn btn-secondary" onclick="exportCsv()">⬇ Export CSV</button>
+  </div>
+
+  <div class="history-table">
+    <div class="history-row history-header">
+      <span>Campaign</span><span>Series</span><span>Date</span><span>Status</span><span></span>
+    </div>
+    <div id="historyRows"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="/static/common.js"></script>
+<script>
+let allCampaigns = [];
+let expandedId = null;
+
+window.addEventListener('DOMContentLoaded', loadHistory);
+
+async function loadHistory() {
+  document.getElementById('historyRows').innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading history…</div>';
+  try {
+    const res = await fetch('/api/history');
+    const data = await res.json();
+    if (data.error) {
+      document.getElementById('historyRows').innerHTML = `<div style="padding:20px;color:#FF6D5A;font-size:13px;">${esc(data.error)}. Check your Brevo API key in Settings.</div>`;
+      return;
+    }
+    allCampaigns = data;
+    renderTable();
+  } catch(e) {
+    document.getElementById('historyRows').innerHTML = `<div style="padding:20px;color:#FF6D5A;font-size:13px;">${esc(e.message)}</div>`;
+  }
+}
+
+function filtered() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const status = document.getElementById('statusFilter').value;
+  const series = document.getElementById('seriesFilter').value;
+  return allCampaigns.filter(c => {
+    const matchQ = !q || c.name.toLowerCase().includes(q) || (c.subject || '').toLowerCase().includes(q);
+    const matchStatus = status === 'All' || c.status === status;
+    const matchSeries = series === 'All' || c.series === series;
+    return matchQ && matchStatus && matchSeries;
+  });
+}
+
+function statusLabel(s) {
+  return { draft: 'Draft', sent: 'Sent' }[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Unknown');
+}
+
+function statusClass(s) {
+  if (s === 'draft') return 'status-draft';
+  if (s === 'sent') return 'status-sent';
+  return 'status-other';
+}
+
+function renderTable() {
+  const rows = filtered();
+
+  const now = new Date();
+  const thisMonth = allCampaigns.filter(c => {
+    const d = new Date(c.sentDate || c.createdAt);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }).length;
+  document.getElementById('totalsLine').textContent = `${allCampaigns.length} total · ${thisMonth} this month`;
+
+  const container = document.getElementById('historyRows');
+  if (!rows.length) {
+    container.innerHTML = '<div class="empty-page-state"><div class="empty-icon">🕐</div><p>No history yet.</p></div>';
+    return;
+  }
+
+  container.innerHTML = rows.map(c => `
+    <div class="history-row" onclick="toggleExpand('${c.id}')">
+      <span class="history-name">${esc(c.subject || c.name)}</span>
+      <span>${c.series === 'po' ? 'PO' : 'REI Grove'}</span>
+      <span>${esc(c.sentDate || c.createdAt || '—')}</span>
+      <span><span class="status-badge ${statusClass(c.status)}">${statusLabel(c.status)}</span></span>
+      <span class="history-view">${expandedId === c.id ? '▲' : '▼'}</span>
+    </div>
+    ${expandedId === c.id ? `<div class="history-detail">Campaign name: ${esc(c.name)}</div>` : ''}
+  `).join('');
+}
+
+function toggleExpand(id) {
+  expandedId = expandedId === id ? null : id;
+  renderTable();
+}
+
+function exportCsv() {
+  const rows = filtered();
+  const headers = ['Name', 'Subject', 'Series', 'Date', 'Status'];
+  const csv = [headers, ...rows.map(c => [
+    c.name, c.subject || '', c.series, c.sentDate || c.createdAt || '', statusLabel(c.status)
+  ])].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'newsletter-history.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
