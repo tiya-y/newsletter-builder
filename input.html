@@ -138,8 +138,9 @@
           <button class="tab active" data-tab="browse" onclick="switchTab('browse')">Browse Articles</button>
           <button class="tab" data-tab="url" data-series-only="po" onclick="switchTab('url')">Paste URL</button>
           <button class="tab hidden" data-tab="assets" data-series-only="rei" onclick="switchTab('assets')">Assets</button>
-          <button class="tab" data-tab="promo" onclick="switchTab('promo')">Custom Promo</button>
-          <button class="tab" data-tab="webinar" onclick="switchTab('webinar')">Webinars</button>
+          <button class="tab" data-tab="promo" id="customPromoTabBtn" onclick="switchTab('promo')">Custom Promo</button>
+          <button class="tab" data-tab="webinar" data-series-only="po" onclick="switchTab('webinar')">Webinars</button>
+          <button class="tab hidden" data-tab="subscribe" data-series-only="rei" onclick="switchTab('subscribe')">Promo</button>
         </div>
       </div>
 
@@ -208,6 +209,14 @@
         </div>
       </div>
 
+      <div class="tab-content" id="tab-subscribe">
+        <input type="text" id="subPromoSearch" placeholder="Search promo options..." style="border:1px solid #E7E7E7;border-radius:7px;padding:8px 11px;font-family:Poppins,sans-serif;font-size:13px;outline:none;" oninput="filterSubPromos()">
+        <div style="font-size:11px;color:#9AA0A6;" id="subPromoCountLabel"></div>
+        <div class="article-grid" id="subPromoGrid">
+          <div class="loading-row" style="grid-column:1/-1;"><div class="spinner"></div> Loading promo options...</div>
+        </div>
+      </div>
+
       <div class="divider"></div>
 
       <div>
@@ -256,6 +265,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadArticles();
   loadWebinars();
   loadAssets();
+  loadSubPromos();
   renderBlocks();
   schedulePreview();
 
@@ -298,6 +308,7 @@ function updateTabVisibilityForSeries() {
   document.querySelectorAll('[data-series-only]').forEach(el => {
     el.classList.toggle('hidden', el.dataset.seriesOnly !== series);
   });
+  document.getElementById('customPromoTabBtn').textContent = series === 'po' ? 'Custom Promo' : 'Custom';
   // If the tab that was active just got hidden (e.g. "Paste URL" while on REI Grove), fall back
   const activeTab = document.querySelector('.tab.active');
   if (activeTab && activeTab.classList.contains('hidden')) {
@@ -408,6 +419,56 @@ function renderAssets(assets) {
   label.textContent = `${assets.length} asset${assets.length !== 1 ? 's' : ''}`;
   grid.innerHTML = '';
   assets.forEach(a => grid.appendChild(makeArticleCard(a, 'article')));
+}
+
+// ── REI Grove subscription promo options ───────────────────────────────────────
+let allSubPromos = [];
+
+async function loadSubPromos() {
+  const grid = document.getElementById('subPromoGrid');
+  grid.innerHTML = '<div class="loading-row" style="grid-column:1/-1;"><div class="spinner"></div> Loading promo options…</div>';
+  try {
+    const res = await fetch('/api/rei-subscription-promos');
+    allSubPromos = await res.json();
+    renderSubPromos(allSubPromos);
+  } catch(e) {
+    grid.innerHTML = `<div style="grid-column:1/-1;padding:20px;color:#FF6D5A;font-size:13px;">Server error: ${e.message}</div>`;
+  }
+}
+
+function filterSubPromos() {
+  const q = document.getElementById('subPromoSearch').value.toLowerCase();
+  const filtered = allSubPromos.filter(p =>
+    !q || p.title?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q)
+  );
+  renderSubPromos(filtered);
+}
+
+function renderSubPromos(promos) {
+  const grid = document.getElementById('subPromoGrid');
+  const label = document.getElementById('subPromoCountLabel');
+  if (!promos.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;color:#9AA0A6;font-size:13px;text-align:center;">No promo options found.</div>';
+    label.textContent = '';
+    return;
+  }
+  label.textContent = `${promos.length} promo option${promos.length !== 1 ? 's' : ''}`;
+  grid.innerHTML = '';
+  promos.forEach(p => grid.appendChild(makePromoOptionCard(p)));
+}
+
+function makePromoOptionCard(p) {
+  const div = document.createElement('div');
+  div.className = 'article-card rei-hover';
+  div.innerHTML = `
+    <div class="article-card-body">
+      <div class="article-card-title">${esc(p.title)}</div>
+      <div class="article-card-desc">${esc(p.description)}</div>
+      ${p.cta_text ? `<div style="margin-top:8px;"><span style="font-size:11px;font-weight:600;color:#57823C;background:#EAF0E8;padding:3px 8px;border-radius:5px;">${esc(p.cta_text)} →</span></div>` : ''}
+    </div>
+    <button class="article-card-add rei" onclick='addBlock(${JSON.stringify({ type: "promo", ...p })})'>+ Add</button>
+  `;
+  return div;
 }
 
 function filterArticles() {

@@ -305,6 +305,16 @@ def get_rei_asset_categories():
     cats = sorted(set(a.get('category', '') for a in assets if a.get('category', '')))
     return jsonify(cats)
 
+SUBSCRIPTION_PROMOS_FILE = os.path.join(BASE_DIR, 'rei_subscription_promos.json')
+
+@app.route('/api/rei-subscription-promos')
+@require_auth
+def get_rei_subscription_promos():
+    if not os.path.exists(SUBSCRIPTION_PROMOS_FILE):
+        return jsonify([])
+    with open(SUBSCRIPTION_PROMOS_FILE) as f:
+        return jsonify(json.load(f))
+
 @app.route('/api/fetch-url', methods=['POST'])
 @require_auth
 def fetch_url():
