@@ -347,83 +347,110 @@ def generate_email_html(data):
     else:
         return build_rei_email(data)
 
-def build_article_card_po(block):
-    img_row = ''
-    if block.get('image'):
-        img_row = f'''
-        <tr>
-          <td style="padding:0; line-height:0;">
-            <img src="{esc(block['image'])}" alt="{esc(block.get('title',''))}"
-                 width="100%" style="display:block; width:100%; max-height:220px; object-fit:cover; border-radius:10px 10px 0 0;">
-          </td>
-        </tr>'''
+PO_FONT = "'Poppins',Arial,Helvetica,sans-serif"
+
+def po_utm(url, month, year):
+    """Match the real Brevo template's tracking convention on every outbound link."""
+    if not url or url == '#':
+        return url or '#'
+    campaign = f"{month.lower()}+{year}+newsletter" if month and year else 'newsletter'
+    sep = '&' if '?' in url else '?'
+    return f"{url}{sep}utm_source=brevo&utm_medium=email&utm_campaign={campaign}"
+
+def po_divider():
+    return f'''
+        <tr><td style="padding:0 15px;">
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" height="1" style="border-top:1px solid #4A4A4A;font-size:1px;line-height:1px;"><tr><td>&nbsp;</td></tr></table>
+        </td></tr>'''
+
+def build_article_card_po(block, index, month, year):
+    title = esc(block.get('title', ''))
+    desc = esc(block.get('description', ''))
+    url = esc(po_utm(block.get('url', '#'), month, year))
+    image = block.get('image', '')
 
     cat_tag = ''
     if block.get('category'):
-        cat_tag = f'<p style="color:#2676FF;font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin:0 0 8px 0;">{esc(block["category"])}</p>'
+        cat_tag = f'<p style="margin:0 0 8px;color:#2675ff;font-family:{PO_FONT};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">{esc(block["category"])}</p>'
+
+    text_cell = f'''
+              <td width="{"50%" if image else "100%"}" valign="top" style="padding:0 15px;">
+                {cat_tag}
+                <h2 style="margin:0 0 10px;color:#1f2d3d;font-family:{PO_FONT};font-size:22px;font-weight:700;line-height:1.3;">{title}</h2>
+                <p style="margin:0 0 15px;color:#3b3f44;font-family:{PO_FONT};font-size:15px;line-height:1.5;">{desc}</p>
+                <a href="{url}" target="_blank" style="display:inline-block;background-color:#f6b42a;color:#3b3f44;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;text-decoration:none;padding:12px 24px;border-radius:8px;">Read Now</a>
+              </td>'''
+
+    if not image:
+        row = text_cell
+    else:
+        image_cell = f'''
+              <td width="50%" valign="top" style="padding:0 15px;">
+                <img src="{esc(image)}" width="100%" alt="{title}" style="display:block;width:100%;border-radius:8px;">
+              </td>'''
+        # Alternate image-left/image-right like the real template's blog section
+        row = image_cell + text_cell if index % 2 == 1 else text_cell + image_cell
 
     return f'''
         <tr>
-          <td style="padding:0 32px 20px;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E7E7E7;border-radius:10px;overflow:hidden;background:#ffffff;">
-              {img_row}
-              <tr>
-                <td style="padding:20px 24px 22px;">
-                  {cat_tag}
-                  <p style="color:#2E3B47;font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:17px;font-weight:700;margin:0 0 8px;line-height:1.35;">{esc(block.get('title',''))}</p>
-                  <p style="color:#69727A;font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:14px;line-height:1.65;margin:0 0 16px;">{esc(block.get('description',''))}</p>
-                  <a href="{esc(block.get('url','#'))}" style="color:#2676FF;font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:14px;font-weight:600;text-decoration:none;">Read more &rarr;</a>
-                </td>
-              </tr>
-            </table>
+          <td style="padding:20px 15px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>{row}</tr></table>
           </td>
-        </tr>'''
+        </tr>''' + po_divider()
 
-def build_promo_card_po(block):
-    img_row = ''
-    if block.get('image'):
-        img_row = f'''
-        <tr>
-          <td style="padding:0; line-height:0;">
-            <img src="{esc(block['image'])}" alt="{esc(block.get('title',''))}"
-                 width="100%" style="display:block;width:100%;max-height:200px;object-fit:cover;border-radius:8px 8px 0 0;">
-          </td>
-        </tr>'''
+def build_promo_card_po(block, month, year):
+    title = esc(block.get('title', ''))
+    desc = esc(block.get('description', ''))
+    image = block.get('image', '')
+    cta_text = block.get('cta_text', '')
+    cta_url = block.get('cta_url', '')
 
     cta = ''
-    if block.get('cta_url') and block.get('cta_text'):
-        cta = f'<a href="{esc(block["cta_url"])}" style="display:inline-block;background-color:#2676FF;color:#ffffff;font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:8px;letter-spacing:0.2px;">{esc(block["cta_text"])}</a>'
+    if cta_url and cta_text:
+        url = esc(po_utm(cta_url, month, year))
+        cta = f'<a href="{url}" target="_blank" style="display:inline-block;background-color:#2e3b47;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;text-decoration:none;padding:12px 24px;border-radius:8px;">{esc(cta_text)}</a>'
+
+    text_block = f'''
+                <h3 style="margin:0 0 10px;color:#1f2d3d;font-family:{PO_FONT};font-size:20px;font-weight:700;">{title}</h3>
+                <p style="margin:0 0 15px;color:#3b3f44;font-family:{PO_FONT};font-size:15px;line-height:1.5;">{desc}</p>
+                {cta}'''
+
+    if image:
+        row = f'''
+              <td width="25%" valign="top" style="padding:0 15px;">
+                <img src="{esc(image)}" width="100%" alt="{title}" style="display:block;width:100%;border-radius:8px;">
+              </td>
+              <td width="75%" valign="top" style="padding:0 15px;">{text_block}
+              </td>'''
+    else:
+        row = f'<td width="100%" valign="top" style="padding:0 15px;">{text_block}\n              </td>'
 
     return f'''
         <tr>
-          <td style="padding:0 32px 20px;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f5ff;border:1px solid #dce8ff;border-left:4px solid #2676FF;border-radius:8px;overflow:hidden;">
-              {img_row}
-              <tr>
-                <td style="padding:20px 24px 22px;">
-                  <p style="color:#2E3B47;font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:16px;font-weight:700;margin:0 0 8px;">{esc(block.get('title',''))}</p>
-                  <p style="color:#69727A;font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:14px;line-height:1.65;margin:0 0 16px;">{esc(block.get('description',''))}</p>
-                  {cta}
-                </td>
-              </tr>
-            </table>
+          <td style="padding:20px 15px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>{row}</tr></table>
           </td>
-        </tr>'''
+        </tr>''' + po_divider()
 
 def build_po_email(data):
     month = data.get('month', '')
     year = data.get('year', '')
-    headline = data.get('headline') or f'{month} {year} Newsletter'
-    subheadline = data.get('subheadline', "What's new at Innago this month")
-    intro = data.get('intro', 'Hi there! Here\'s your monthly update from Innago.')
+    headline = data.get('headline') or f'{month} {year} edition'
+    subheadline = data.get('subheadline', '')
+    intro = data.get('intro', "Here's your monthly update from Innago.")
+    login_url = po_utm('https://my.innago.com/login', month, year)
 
     blocks_html = ''
-    for block in data.get('blocks', []):
+    for i, block in enumerate(data.get('blocks', [])):
         btype = block.get('type', 'article')
         if btype in ('article', 'webinar'):
-            blocks_html += build_article_card_po(block)
+            blocks_html += build_article_card_po(block, i, month, year)
         elif btype == 'promo':
-            blocks_html += build_promo_card_po(block)
+            blocks_html += build_promo_card_po(block, month, year)
+
+    subheadline_html = ''
+    if subheadline:
+        subheadline_html = f'<p style="margin:0 0 12px;color:#3b3f44;font-family:{PO_FONT};font-size:16px;line-height:1.5;">{esc(subheadline)}</p>'
 
     return f'''<!DOCTYPE html>
 <html lang="en">
@@ -432,48 +459,55 @@ def build_po_email(data):
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
   <meta name="supported-color-schemes" content="light">
-  <style>:root{{color-scheme:light only;}}body,table,td,a{{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}}img{{border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}}table{{border-collapse:collapse!important;}}body{{height:100%!important;margin:0!important;padding:0!important;width:100%!important;background-color:#F4F5F7;}}</style>
+  <style>:root{{color-scheme:light only;}}body,table,td,a{{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}}img{{border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}}table{{border-collapse:collapse!important;}}body{{height:100%!important;margin:0!important;padding:0!important;width:100%!important;background-color:#ffffff;}}</style>
 </head>
-<body style="margin:0;padding:0;background-color:#F4F5F7;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
+<body style="margin:0;padding:0;background-color:#ffffff;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
   <tr>
-    <td align="center" style="padding:32px 16px;">
-      <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.09);">
+    <td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" role="presentation" style="max-width:600px;background:#ffffff;">
 
-        <!-- HEADER -->
+        <!-- HEADER: logo only, matching the real template -->
         <tr>
-          <td style="background-color:#2676FF;border-radius:12px 12px 0 0;padding:36px 40px;text-align:center;">
-            <img src="https://res.cloudinary.com/dam3qptkg/image/upload/v1773275475/Innago_White_transparent_2_ww7aro.png"
-                 alt="Innago" height="34" style="display:block;margin:0 auto 22px;">
-            <h1 style="color:#ffffff;font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:26px;font-weight:700;margin:0;line-height:1.3;">{esc(headline)}</h1>
-            <p style="color:rgba(255,255,255,0.85);font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:15px;font-weight:300;margin:10px 0 0;line-height:1.5;">{esc(subheadline)}</p>
+          <td style="background-color:#2675ff;padding:20px 15px;text-align:center;">
+            <a href="https://innago.com" target="_blank">
+              <img src="https://img.mailinblue.com/7977391/images/content_library/original/679a52465b47d6d757542268.jpg"
+                   width="193" alt="Innago" style="display:block;width:193px;margin:0 auto;">
+            </a>
           </td>
         </tr>
 
-        <!-- INTRO -->
+        <!-- GREETING + INTRO -->
         <tr>
-          <td style="background-color:#ffffff;padding:32px 32px 16px;">
-            <p style="color:#69727A;font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:15px;line-height:1.7;margin:0;">{esc(intro)}</p>
+          <td style="padding:20px 15px;">
+            <p style="margin:0 0 12px;color:#3b3f44;font-family:{PO_FONT};font-size:16px;line-height:1.5;">Hi {{{{ contact.FIRSTNAME }}}},</p>
+            <p style="margin:0 0 12px;color:#3b3f44;font-family:{PO_FONT};font-size:16px;line-height:1.5;">Welcome back to <strong><span style="color:#2675ff;">Innago's monthly newsletter — {esc(headline)}!</span></strong></p>
+            {subheadline_html}
+            <p style="margin:0 0 12px;color:#3b3f44;font-family:{PO_FONT};font-size:16px;line-height:1.5;">{esc(intro)}</p>
+            <p style="margin:0;color:#3b3f44;font-family:{PO_FONT};font-size:16px;line-height:1.5;">Let's dive in! 👇</p>
           </td>
         </tr>
 
-        <!-- SPACER -->
-        <tr><td style="background:#ffffff;height:16px;"></td></tr>
+        <!-- LOGIN CTA -->
+        <tr>
+          <td align="center" style="padding:0 15px 20px;">
+            <a href="{esc(login_url)}" target="_blank" style="display:inline-block;background-color:#f6b42a;color:#3b3f44;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;text-decoration:none;padding:12px 24px;border-radius:12px;">Login Now</a>
+          </td>
+        </tr>
+        {po_divider()}
 
         <!-- CONTENT BLOCKS -->
-        {blocks_html if blocks_html else '<tr><td style="padding:0 32px 20px;color:#999;font-family:Poppins,Arial,sans-serif;font-size:14px;text-align:center;">[No content blocks added yet]</td></tr>'}
-
-        <!-- SPACER -->
-        <tr><td style="background:#ffffff;height:12px;"></td></tr>
+        {blocks_html if blocks_html else '<tr><td style="padding:20px 15px;color:#999;font-family:Poppins,Arial,sans-serif;font-size:14px;text-align:center;">[No content blocks added yet]</td></tr>'}
 
         <!-- FOOTER -->
         <tr>
-          <td style="background-color:#F4F5F7;border-radius:0 0 12px 12px;padding:28px 40px;text-align:center;">
-            <p style="color:#69727A;font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:13px;margin:0 0 10px;">Best, <strong>The Innago Team</strong></p>
-            <p style="color:#9AA0A6;font-family:\'Poppins\',\'Segoe UI\',Arial,sans-serif;font-size:11px;margin:0;line-height:1.9;">
-              <a href="{{{{ unsubscribe }}}}" style="color:#9AA0A6;text-decoration:underline;">Unsubscribe</a> &nbsp;&middot;&nbsp;
-              <a href="https://innago.com/privacy-policy" style="color:#9AA0A6;text-decoration:underline;">Privacy Policy</a> &nbsp;&middot;&nbsp;
-              <a href="https://innago.com" style="color:#9AA0A6;text-decoration:underline;">Visit Innago</a>
+          <td style="background-color:#2675ff;padding:20px 15px;text-align:center;">
+            <p style="margin:0 0 6px;color:#ffffff;font-family:{PO_FONT};font-size:18px;font-weight:700;">Innago LLC</p>
+            <p style="margin:0 0 10px;color:#ffffff;font-family:{PO_FONT};font-size:14px;">1308 Race St Suite 100, 45202, Cincinnati</p>
+            <p style="margin:0;font-family:{PO_FONT};font-size:14px;">
+              <a href="{{{{ mirror }}}}" style="color:#ffffff;text-decoration:underline;">View in browser</a>
+              <span style="color:#ffffff;"> | </span>
+              <a href="{{{{ unsubscribe }}}}" style="color:#ffffff;text-decoration:underline;">Unsubscribe</a>
             </p>
           </td>
         </tr>
