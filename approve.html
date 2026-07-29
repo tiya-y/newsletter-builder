@@ -102,8 +102,8 @@ let selectedLists = new Set();
 let previewDebounce = null;
 let saveDebounce = null;
 
-window.addEventListener('DOMContentLoaded', () => {
-  draft = loadDraft();
+window.addEventListener('DOMContentLoaded', async () => {
+  draft = await loadDraft();
   if (!draft || !draft.subject) {
     document.getElementById('emptyState').classList.remove('hidden');
     return;
@@ -205,9 +205,9 @@ async function regenerate() {
   }
 }
 
-function deleteDraft() {
+async function deleteDraft() {
   if (!confirm("Delete this draft? This can't be undone.")) return;
-  clearDraft();
+  await clearDraft();
   window.location.href = '/input';
 }
 
@@ -290,7 +290,7 @@ async function confirmPush() {
       toast('Error: ' + data.error.substring(0,120), 'error');
     } else {
       closePushModal();
-      clearDraft();
+      await clearDraft();
       toast(`Draft created in Brevo: "${data.name}"`, 'success');
       setTimeout(() => { window.location.href = '/history'; }, 1000);
     }

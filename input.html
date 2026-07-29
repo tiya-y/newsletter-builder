@@ -239,8 +239,8 @@ let allArticles = [];
 let fetchedUrlData = null;
 const emptyStateEl = document.getElementById('emptyState');
 
-window.addEventListener('DOMContentLoaded', () => {
-  const existing = loadDraft();
+window.addEventListener('DOMContentLoaded', async () => {
+  const existing = await loadDraft();
   if (existing && existing.month) {
     series = existing.series || 'po';
     document.querySelectorAll('.series-btn').forEach(b => b.classList.toggle('active', b.dataset.series === series));
@@ -258,7 +258,11 @@ window.addEventListener('DOMContentLoaded', () => {
   loadSubPromos();
   renderBlocks();
 
-  document.getElementById('sidebar').addEventListener('input', () => { saveSetup(); });
+  let saveSetupDebounce;
+  document.getElementById('sidebar').addEventListener('input', () => {
+    clearTimeout(saveSetupDebounce);
+    saveSetupDebounce = setTimeout(saveSetup, 400);
+  });
 });
 
 function setCurrentMonth() {
@@ -639,7 +643,7 @@ async function generateAndContinue() {
   const year = document.getElementById('year').value;
 
   const draft = { series, month, year, blocks };
-  saveDraft(draft);
+  await saveDraft(draft);
 
   btn.disabled = true;
   icon.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;border-top-color:#fff;display:inline-block;"></span>';
@@ -663,7 +667,7 @@ async function generateAndContinue() {
       return; // stay on Input, values are preserved
     }
 
-    saveDraft({
+    await saveDraft({
       ...draft,
       subject: data.subject,
       preview_text: data.preview_text,

@@ -18,6 +18,12 @@ except ImportError:
     anthropic_sdk = None
 
 try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor, Json as PgJson
+except ImportError:
+    psycopg2 = None
+
+try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
@@ -28,6 +34,83 @@ CORS(app)
 
 BREVO_BASE = 'https://api.brevo.com/v3'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ── Database (Neon Postgres) — optional; everything falls back gracefully ─────
+# if DATABASE_URL isn't set (e.g. local dev without a DB configured).
+
+_schema_ready = False
+
+def get_db_connection():
+    """Returns a psycopg2 connection with dict-row cursors, or None if no DB is configured/reachable."""
+    if not psycopg2 or not os.environ.get('DATABASE_URL'):
+        return None
+    try:
+        return psycopg2.connect(os.environ['DATABASE_URL'], cursor_factory=RealDictCursor)
+    except Exception as e:
+        print(f'DB connection failed: {e}')
+        return None
+
+def ensure_schema(conn):
+    """Idempotently create all tables. Cached per-process so warm invocations skip the round trip."""
+    global _schema_ready
+    if _schema_ready:
+        return
+    with conn.cursor() as cur:
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS articles (
+                id SERIAL PRIMARY KEY,
+                url TEXT UNIQUE NOT NULL,
+                title TEXT,
+                category TEXT,
+                description TEXT,
+                image TEXT,
+                traffic INTEGER,
+                keywords INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS rei_assets (
+                id SERIAL PRIMARY KEY,
+                title TEXT,
+                category TEXT,
+                description TEXT,
+                url TEXT,
+                image TEXT
+            );
+            CREATE TABLE IF NOT EXISTS rei_subscription_promos (
+                id SERIAL PRIMARY KEY,
+                title TEXT,
+                description TEXT,
+                cta_text TEXT,
+                cta_url TEXT,
+                image TEXT
+            );
+            CREATE TABLE IF NOT EXISTS draft (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                series TEXT,
+                month TEXT,
+                year TEXT,
+                blocks JSONB,
+                subject TEXT,
+                preview_text TEXT,
+                headline TEXT,
+                subheadline TEXT,
+                intro TEXT,
+                examples_used TEXT,
+                updated_at TIMESTAMPTZ DEFAULT now()
+            );
+            CREATE TABLE IF NOT EXISTS push_history (
+                id SERIAL PRIMARY KEY,
+                series TEXT,
+                month TEXT,
+                year TEXT,
+                subject TEXT,
+                campaign_id INTEGER,
+                campaign_name TEXT,
+                list_ids JSONB,
+                pushed_at TIMESTAMPTZ DEFAULT now()
+            );
+        ''')
+    conn.commit()
+    _schema_ready = True
 
 # ── Config — env vars only (no filesystem writes on Vercel) ───────────────────
 
@@ -138,11 +221,29 @@ def brevo_push():
                           json=payload, timeout=15)
         r.raise_for_status()
         resp = r.json()
+        record_push_history(series, month, year, data.get('subject', campaign_name), resp.get('id'), campaign_name, list_ids)
         return jsonify({'ok': True, 'campaign_id': resp.get('id'), 'name': campaign_name})
     except requests.HTTPError as e:
         return jsonify({'error': e.response.text}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+def record_push_history(series, month, year, subject, campaign_id, campaign_name, list_ids):
+    """Best-effort local log of every push — used as a History fallback if the live Brevo query ever fails."""
+    conn = get_db_connection()
+    if not conn:
+        return
+    try:
+        ensure_schema(conn)
+        with conn.cursor() as cur:
+            cur.execute('''
+                INSERT INTO push_history (series, month, year, subject, campaign_id, campaign_name, list_ids)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ''', (series, month, year, subject, campaign_id, campaign_name, PgJson(list_ids)))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f'Failed to record push history (non-fatal): {e}')
 
 # ── Article scraping ───────────────────────────────────────────────────────────
 
@@ -235,6 +336,19 @@ def scrape_blog(blog_url):
 ARTICLES_FILE = os.path.join(BASE_DIR, 'articles.json')
 
 def load_articles_library():
+    conn = get_db_connection()
+    if conn:
+        try:
+            ensure_schema(conn)
+            with conn.cursor() as cur:
+                cur.execute('SELECT url, title, category, description, image, traffic, keywords FROM articles ORDER BY traffic DESC NULLS LAST')
+                rows = [dict(r) for r in cur.fetchall()]
+            conn.close()
+            if rows:
+                return rows
+        except Exception as e:
+            print(f'DB read failed for articles, falling back to JSON: {e}')
+            conn.close()
     if os.path.exists(ARTICLES_FILE):
         with open(ARTICLES_FILE) as f:
             return json.load(f)
@@ -277,6 +391,19 @@ def get_categories():
 ASSETS_FILE = os.path.join(BASE_DIR, 'rei_assets.json')
 
 def load_assets_library():
+    conn = get_db_connection()
+    if conn:
+        try:
+            ensure_schema(conn)
+            with conn.cursor() as cur:
+                cur.execute('SELECT title, category, description, url, image FROM rei_assets ORDER BY id')
+                rows = [dict(r) for r in cur.fetchall()]
+            conn.close()
+            if rows:
+                return rows
+        except Exception as e:
+            print(f'DB read failed for rei_assets, falling back to JSON: {e}')
+            conn.close()
     if os.path.exists(ASSETS_FILE):
         with open(ASSETS_FILE) as f:
             return json.load(f)
@@ -307,13 +434,185 @@ def get_rei_asset_categories():
 
 SUBSCRIPTION_PROMOS_FILE = os.path.join(BASE_DIR, 'rei_subscription_promos.json')
 
+def load_subscription_promos():
+    conn = get_db_connection()
+    if conn:
+        try:
+            ensure_schema(conn)
+            with conn.cursor() as cur:
+                cur.execute('SELECT title, description, cta_text, cta_url, image FROM rei_subscription_promos ORDER BY id')
+                rows = [dict(r) for r in cur.fetchall()]
+            conn.close()
+            if rows:
+                return rows
+        except Exception as e:
+            print(f'DB read failed for rei_subscription_promos, falling back to JSON: {e}')
+            conn.close()
+    if os.path.exists(SUBSCRIPTION_PROMOS_FILE):
+        with open(SUBSCRIPTION_PROMOS_FILE) as f:
+            return json.load(f)
+    return []
+
 @app.route('/api/rei-subscription-promos')
 @require_auth
 def get_rei_subscription_promos():
-    if not os.path.exists(SUBSCRIPTION_PROMOS_FILE):
-        return jsonify([])
-    with open(SUBSCRIPTION_PROMOS_FILE) as f:
-        return jsonify(json.load(f))
+    return jsonify(load_subscription_promos())
+
+# ── Database status + one-time seed ────────────────────────────────────────────
+
+DB_TABLES = ['articles', 'rei_assets', 'rei_subscription_promos', 'draft', 'push_history']
+
+@app.route('/api/db/status')
+@require_auth
+def db_status():
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'connected': False})
+    try:
+        ensure_schema(conn)
+        counts = {}
+        with conn.cursor() as cur:
+            for table in DB_TABLES:
+                cur.execute(f'SELECT COUNT(*) AS c FROM {table}')
+                counts[table] = cur.fetchone()['c']
+        conn.close()
+        return jsonify({'connected': True, 'counts': counts})
+    except Exception as e:
+        conn.close()
+        return jsonify({'connected': False, 'error': str(e)})
+
+@app.route('/api/db/seed', methods=['POST'])
+@require_auth
+def db_seed():
+    """Loads the bundled JSON content libraries into the DB — skips any table that already has rows."""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Database not configured — set DATABASE_URL first.'}), 500
+    try:
+        ensure_schema(conn)
+        seeded = {}
+        with conn.cursor() as cur:
+            cur.execute('SELECT COUNT(*) AS c FROM articles')
+            if cur.fetchone()['c'] == 0 and os.path.exists(ARTICLES_FILE):
+                with open(ARTICLES_FILE) as f:
+                    rows = json.load(f)
+                for a in rows:
+                    cur.execute('''
+                        INSERT INTO articles (url, title, category, description, image, traffic, keywords)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (url) DO NOTHING
+                    ''', (a.get('url'), a.get('title'), a.get('category'), a.get('description'),
+                          a.get('image'), a.get('traffic'), a.get('keywords')))
+                seeded['articles'] = len(rows)
+            else:
+                seeded['articles'] = 0
+
+            cur.execute('SELECT COUNT(*) AS c FROM rei_assets')
+            if cur.fetchone()['c'] == 0 and os.path.exists(ASSETS_FILE):
+                with open(ASSETS_FILE) as f:
+                    rows = json.load(f)
+                for a in rows:
+                    cur.execute('''
+                        INSERT INTO rei_assets (title, category, description, url, image)
+                        VALUES (%s,%s,%s,%s,%s)
+                    ''', (a.get('title'), a.get('category'), a.get('description'), a.get('url'), a.get('image')))
+                seeded['rei_assets'] = len(rows)
+            else:
+                seeded['rei_assets'] = 0
+
+            cur.execute('SELECT COUNT(*) AS c FROM rei_subscription_promos')
+            if cur.fetchone()['c'] == 0 and os.path.exists(SUBSCRIPTION_PROMOS_FILE):
+                with open(SUBSCRIPTION_PROMOS_FILE) as f:
+                    rows = json.load(f)
+                for p in rows:
+                    cur.execute('''
+                        INSERT INTO rei_subscription_promos (title, description, cta_text, cta_url, image)
+                        VALUES (%s,%s,%s,%s,%s)
+                    ''', (p.get('title'), p.get('description'), p.get('cta_text'), p.get('cta_url'), p.get('image')))
+                seeded['rei_subscription_promos'] = len(rows)
+            else:
+                seeded['rei_subscription_promos'] = 0
+        conn.commit()
+        conn.close()
+        return jsonify({'ok': True, 'seeded': seeded})
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        return jsonify({'error': str(e)}), 500
+
+# ── Draft persistence — a single in-progress newsletter, DB-backed ─────────────
+# Mirrors the old localStorage singleton exactly: one active draft at a time,
+# regardless of series. Requires DATABASE_URL — with no DB configured, Input/
+# Approve just won't have anything to hand off between page loads.
+
+@app.route('/api/draft', methods=['GET'])
+@require_auth
+def get_draft():
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({})
+    try:
+        ensure_schema(conn)
+        with conn.cursor() as cur:
+            cur.execute('SELECT * FROM draft WHERE id = 1')
+            row = cur.fetchone()
+        conn.close()
+        if not row:
+            return jsonify({})
+        result = dict(row)
+        result.pop('id', None)
+        if result.get('updated_at'):
+            result['updated_at'] = result['updated_at'].isoformat()
+        return jsonify(result)
+    except Exception as e:
+        conn.close()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/draft', methods=['POST'])
+@require_auth
+def save_draft_route():
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Database not configured'}), 500
+    data = request.json or {}
+    try:
+        ensure_schema(conn)
+        with conn.cursor() as cur:
+            cur.execute('''
+                INSERT INTO draft (id, series, month, year, blocks, subject, preview_text, headline, subheadline, intro, examples_used, updated_at)
+                VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                ON CONFLICT (id) DO UPDATE SET
+                    series = EXCLUDED.series, month = EXCLUDED.month, year = EXCLUDED.year,
+                    blocks = EXCLUDED.blocks, subject = EXCLUDED.subject, preview_text = EXCLUDED.preview_text,
+                    headline = EXCLUDED.headline, subheadline = EXCLUDED.subheadline, intro = EXCLUDED.intro,
+                    examples_used = EXCLUDED.examples_used, updated_at = now()
+            ''', (
+                data.get('series'), data.get('month'), data.get('year'), PgJson(data.get('blocks', [])),
+                data.get('subject'), data.get('preview_text'), data.get('headline'),
+                data.get('subheadline'), data.get('intro'), data.get('_examples_used'),
+            ))
+        conn.commit()
+        conn.close()
+        return jsonify({'ok': True})
+    except Exception as e:
+        conn.close()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/draft', methods=['DELETE'])
+@require_auth
+def clear_draft_route():
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'ok': True})
+    try:
+        ensure_schema(conn)
+        with conn.cursor() as cur:
+            cur.execute('DELETE FROM draft WHERE id = 1')
+        conn.commit()
+        conn.close()
+        return jsonify({'ok': True})
+    except Exception as e:
+        conn.close()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/fetch-url', methods=['POST'])
 @require_auth
@@ -757,11 +1056,40 @@ def get_history_campaigns():
     except Exception as e:
         return {'error': str(e)}
 
+def get_local_push_history():
+    """Fallback source for History when the live Brevo query fails — reflects
+    only what this tool pushed (won't see campaigns sent later from within Brevo)."""
+    conn = get_db_connection()
+    if not conn:
+        return None
+    try:
+        ensure_schema(conn)
+        with conn.cursor() as cur:
+            cur.execute('SELECT * FROM push_history ORDER BY pushed_at DESC LIMIT 200')
+            rows = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return [{
+            'id': r['campaign_id'] or r['id'],
+            'name': r['campaign_name'],
+            'subject': r['subject'],
+            'status': 'draft',  # a push only ever creates a Brevo draft
+            'series': r['series'],
+            'createdAt': r['pushed_at'].strftime('%Y-%m-%d') if r['pushed_at'] else None,
+            'sentDate': None,
+        } for r in rows]
+    except Exception as e:
+        print(f'Local push history fallback also failed: {e}')
+        conn.close()
+        return None
+
 @app.route('/api/history')
 @require_auth
 def api_history():
     data = get_history_campaigns()
     if isinstance(data, dict) and data.get('error'):
+        fallback = get_local_push_history()
+        if fallback is not None:
+            return jsonify(fallback)
         return jsonify(data), 500
     return jsonify(data)
 

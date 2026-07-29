@@ -26,20 +26,39 @@ document.addEventListener('DOMContentLoaded', highlightNav);
 // and once generated, the AI copy too. Approve is the single source of truth
 // for "what's pending" — once pushed to Brevo, the draft is cleared and Brevo
 // itself becomes the record (surfaced on History).
-const DRAFT_KEY = 'nlb_draft';
+// Backed by the DB (/api/draft) so it survives across browsers/devices —
+// requires DATABASE_URL to be set; with no DB configured, save/clear are
+// harmless no-ops and load always returns null (matches having no draft yet).
+const DRAFT_API = '/api/draft';
 
-function loadDraft() {
+async function loadDraft() {
   try {
-    return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+    const res = await fetch(DRAFT_API);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data && Object.keys(data).length) ? data : null;
   } catch (e) {
+    console.error('Failed to load draft:', e);
     return null;
   }
 }
 
-function saveDraft(draft) {
-  localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+async function saveDraft(draft) {
+  try {
+    await fetch(DRAFT_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft),
+    });
+  } catch (e) {
+    console.error('Failed to save draft:', e);
+  }
 }
 
-function clearDraft() {
-  localStorage.removeItem(DRAFT_KEY);
+async function clearDraft() {
+  try {
+    await fetch(DRAFT_API, { method: 'DELETE' });
+  } catch (e) {
+    console.error('Failed to clear draft:', e);
+  }
 }

@@ -43,11 +43,80 @@
   <div id="cfgGroups">
     <div class="loading-row"><div class="spinner"></div> Loading settings…</div>
   </div>
+
+  <div class="settings-card">
+    <div class="settings-card-header">
+      <h2>Database</h2>
+      <span class="status-pill" id="dbStatusPill">…</span>
+    </div>
+    <div class="settings-card-body" id="dbStatusBody">
+      <div class="loading-row"><div class="spinner"></div> Checking connection…</div>
+    </div>
+  </div>
 </div>
 
+<div class="toast" id="toast"></div>
 <script src="/static/common.js"></script>
 <script>
-window.addEventListener('DOMContentLoaded', loadConfig);
+window.addEventListener('DOMContentLoaded', () => {
+  loadConfig();
+  loadDbStatus();
+});
+
+async function loadDbStatus() {
+  const pill = document.getElementById('dbStatusPill');
+  const body = document.getElementById('dbStatusBody');
+  try {
+    const res = await fetch('/api/db/status');
+    const data = await res.json();
+
+    if (!data.connected) {
+      pill.className = 'status-pill warn';
+      pill.textContent = '⚠ Not configured';
+      body.innerHTML = `<div style="font-size:13px;color:#69727A;">Set <code>DATABASE_URL</code> in Vercel (or your local .env) to a Neon Postgres connection string.${data.error ? ' Error: ' + esc(data.error) : ''}</div>`;
+      return;
+    }
+
+    pill.className = 'status-pill ok';
+    pill.textContent = '✓ Connected';
+
+    const rows = Object.entries(data.counts).map(([table, count]) => `
+      <div class="settings-row"><span>${esc(table)}</span><code>${count} row${count === 1 ? '' : 's'}</code></div>
+    `).join('');
+
+    body.innerHTML = `
+      ${rows}
+      <button class="btn btn-secondary btn-sm" id="seedBtn" onclick="seedDatabase()" style="align-self:flex-start;margin-top:8px;">Seed from bundled content files</button>
+      <div style="font-size:11px;color:#9AA0A6;">Only fills tables that are currently empty — safe to click more than once.</div>
+    `;
+  } catch(e) {
+    pill.className = 'status-pill warn';
+    pill.textContent = '⚠ Error';
+    body.innerHTML = `<div style="color:#FF6D5A;font-size:13px;">${esc(e.message)}</div>`;
+  }
+}
+
+async function seedDatabase() {
+  const btn = document.getElementById('seedBtn');
+  btn.disabled = true;
+  btn.textContent = 'Seeding…';
+  try {
+    const res = await fetch('/api/db/seed', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) {
+      toast('Seed failed: ' + data.error, 'error');
+    } else {
+      const parts = Object.entries(data.seeded).filter(([,n]) => n > 0).map(([t,n]) => `${n} ${t}`);
+      toast(parts.length ? `Seeded ${parts.join(', ')}` : 'Nothing to seed — all tables already have data', 'success');
+      loadDbStatus();
+    }
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Seed from bundled content files';
+  }
+}
 
 async function loadConfig() {
   const container = document.getElementById('cfgGroups');
