@@ -255,6 +255,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     series = existing.series || 'po';
     document.querySelectorAll('.series-btn').forEach(b => b.classList.toggle('active', b.dataset.series === series));
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('rei-active', series !== 'po'));
+    document.body.classList.toggle('series-rei', series !== 'po');
     document.getElementById('month').value = existing.month;
     document.getElementById('year').value = existing.year;
     blocks = existing.blocks || [];
@@ -301,6 +302,7 @@ function setSeries(s) {
   document.querySelectorAll('.article-card-add').forEach(b => b.className = `article-card-add${isPo ? '' : ' rei'}`);
   document.querySelectorAll('.article-card-cat').forEach(el => el.className = `article-card-cat${isPo ? '' : ' rei'}`);
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('rei-active', !isPo));
+  document.body.classList.toggle('series-rei', !isPo);
 
   updateTabVisibilityForSeries();
   loadArticles();

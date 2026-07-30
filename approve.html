@@ -111,6 +111,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('draftCard').classList.remove('hidden');
   document.getElementById('draftSeriesLabel').textContent = draft.series === 'po' ? 'PO (Innago)' : 'REI Grove';
+  document.body.classList.toggle('series-rei', draft.series !== 'po');
   document.getElementById('subject').value = draft.subject || '';
   document.getElementById('previewText').value = draft.preview_text || '';
   document.getElementById('headline').value = draft.headline || '';
