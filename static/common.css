@@ -26,6 +26,13 @@ body { font-family: 'Poppins', sans-serif; background: #F4F5F7; color: #2E3B47; 
 .series-btn.active .po-logo-blue { display: none; }
 .series-btn.active .po-logo-white { display: block; }
 
+/* REI Grove button shows the REI Grove logo — forest-green variant on the
+   white/inactive state, white/reversed variant once active (dark green background). */
+.rei-logo { height: 16px; width: auto; display: block; }
+.rei-logo-white { display: none; }
+.series-btn.active .rei-logo-color { display: none; }
+.series-btn.active .rei-logo-white { display: block; }
+
 /* Fields */
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 12px; font-weight: 500; color: #69727A; }
