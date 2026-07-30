@@ -26,16 +26,16 @@
 /* min-height:0 is required here — without it, a grid inside a flex column
    ignores max-height/overflow and just grows to fit all its content instead
    of scrolling internally. */
-.article-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; max-height: 480px; overflow-y: auto; min-height: 0; }
-.article-card { border: 1px solid #E7E7E7; border-radius: 8px; overflow: hidden; background: #fff; cursor: pointer; transition: all 0.15s; }
+.article-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); grid-auto-rows: min-content; align-content: start; gap: 12px; max-height: 480px; overflow-y: auto; min-height: 0; }
+.article-card { border: 1px solid #E7E7E7; border-radius: 8px; overflow: hidden; background: #fff; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
 .article-card:hover { border-color: #2676FF; box-shadow: 0 2px 8px rgba(38,118,255,0.12); }
 .article-card.rei-hover:hover { border-color: #57823C; box-shadow: 0 2px 8px rgba(87,130,60,0.12); }
 .article-card img { width: 100%; height: 90px; object-fit: cover; display: block; }
 .article-card-body { padding: 10px 12px 12px; }
-.article-card-cat { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #2676FF; margin-bottom: 4px; }
+.article-card-cat { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #2676FF; margin-bottom: 4px; }
 .article-card-cat.rei { color: #57823C; }
-.article-card-title { font-size: 13px; font-weight: 600; color: #2E3B47; line-height: 1.35; margin-bottom: 6px; }
-.article-card-desc { font-size: 11px; color: #69727A; line-height: 1.4; }
+.article-card-title { font-size: 15px; font-weight: 600; color: #2E3B47; line-height: 1.35; margin-bottom: 6px; }
+.article-card-desc { font-size: 13px; color: #69727A; line-height: 1.45; }
 .article-card-add { display: block; margin: 8px 12px 10px; background: #F0F5FF; color: #2676FF; border: none; border-radius: 5px; padding: 5px 0; font-family: 'Poppins', sans-serif; font-size: 11px; font-weight: 600; cursor: pointer; width: calc(100% - 24px); text-align: center; }
 .article-card-add:hover { background: #2676FF; color: #fff; }
 .article-card-add.rei { background: #EAF0E8; color: #57823C; }
@@ -71,7 +71,7 @@
 <div class="app">
 
   <div class="topbar">
-    <div class="topbar-logo"><span>🗞</span> Newsletter Builder</div>
+    <div class="topbar-logo">Newsletter Builder</div>
     <nav class="page-nav">
       <a href="/input" class="nav-link" data-page="input">+ Input</a>
       <a href="/approve" class="nav-link" data-page="approve">✓ Approve</a>
@@ -80,7 +80,11 @@
     </nav>
     <div class="topbar-actions">
       <div class="series-toggle">
-        <button class="series-btn active" data-series="po" onclick="setSeries('po')">PO (Innago)</button>
+        <button class="series-btn active" data-series="po" onclick="setSeries('po')">
+          PO
+          <img class="po-logo po-logo-blue" src="https://www.innago.com/public/logos/innago-logo-blue.svg" alt="Innago">
+          <img class="po-logo po-logo-white" src="https://res.cloudinary.com/dam3qptkg/image/upload/v1773275475/Innago_White_transparent_2_ww7aro.png" alt="Innago">
+        </button>
         <button class="series-btn" data-series="rei" onclick="setSeries('rei')">REI Grove</button>
       </div>
     </div>
@@ -147,6 +151,10 @@
           <input type="text" id="articleSearch" placeholder="Search articles..." style="flex:1;min-width:140px;border:1px solid #E7E7E7;border-radius:7px;padding:8px 11px;font-family:Poppins,sans-serif;font-size:13px;outline:none;" oninput="filterArticles()">
           <select id="categoryFilter" onchange="filterArticles()" style="border:1px solid #E7E7E7;border-radius:7px;padding:8px 10px;font-family:Poppins,sans-serif;font-size:13px;color:#2E3B47;outline:none;background:#fff;">
             <option value="">All categories</option>
+          </select>
+          <select id="articleSort" onchange="filterArticles()" style="border:1px solid #E7E7E7;border-radius:7px;padding:8px 10px;font-family:Poppins,sans-serif;font-size:13px;color:#2E3B47;outline:none;background:#fff;">
+            <option value="alpha">Sort: A–Z</option>
+            <option value="traffic">Sort: Most traffic first</option>
           </select>
           <button class="btn btn-secondary btn-sm" onclick="loadArticles()">↻</button>
         </div>
@@ -341,7 +349,7 @@ async function loadArticles() {
       grid.innerHTML = `<div style="grid-column:1/-1;padding:20px;color:#FF6D5A;font-size:13px;">Failed to load articles: ${allArticles[0].error}. Check blog URL in Settings.</div>`;
       return;
     }
-    renderArticles(allArticles);
+    renderArticles(sortArticles(allArticles, 'alpha'), 'alpha');
   } catch(e) {
     grid.innerHTML = `<div style="grid-column:1/-1;padding:20px;color:#FF6D5A;font-size:13px;">Server error: ${e.message}</div>`;
   }
@@ -466,15 +474,27 @@ function makePromoOptionCard(p) {
 function filterArticles() {
   const q = document.getElementById('articleSearch').value.toLowerCase();
   const cat = document.getElementById('categoryFilter').value.toLowerCase();
-  const filtered = allArticles.filter(a => {
+  const sort = document.getElementById('articleSort')?.value || 'alpha';
+  let filtered = allArticles.filter(a => {
     const matchQ = !q || a.title?.toLowerCase().includes(q) || a.description?.toLowerCase().includes(q) || a.category?.toLowerCase().includes(q);
     const matchCat = !cat || a.category?.toLowerCase() === cat;
     return matchQ && matchCat;
   });
-  renderArticles(filtered);
+  filtered = sortArticles(filtered, sort);
+  renderArticles(filtered, sort);
 }
 
-function renderArticles(articles) {
+function sortArticles(articles, sort) {
+  const sorted = [...articles];
+  if (sort === 'traffic') {
+    sorted.sort((a, b) => (b.traffic || 0) - (a.traffic || 0));
+  } else {
+    sorted.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+  }
+  return sorted;
+}
+
+function renderArticles(articles, sort = 'alpha') {
   const grid = document.getElementById('articleGrid');
   const label = document.getElementById('articleCountLabel');
   if (!articles.length) {
@@ -482,7 +502,8 @@ function renderArticles(articles) {
     label.textContent = '';
     return;
   }
-  label.textContent = `${articles.length} article${articles.length !== 1 ? 's' : ''} · sorted by traffic`;
+  const sortLabel = sort === 'traffic' ? 'most traffic first' : 'A–Z';
+  label.textContent = `${articles.length} article${articles.length !== 1 ? 's' : ''} · sorted ${sortLabel}`;
   grid.innerHTML = '';
   articles.slice(0, 100).forEach(a => grid.appendChild(makeArticleCard(a, 'article')));
   if (articles.length > 100) {

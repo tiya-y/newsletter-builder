@@ -5,7 +5,6 @@ body { font-family: 'Poppins', sans-serif; background: #F4F5F7; color: #2E3B47; 
 /* Top bar + nav (identical on every page) */
 .topbar { background: #fff; border-bottom: 1px solid #E7E7E7; display: flex; align-items: center; padding: 0 24px; gap: 16px; height: 56px; }
 .topbar-logo { font-size: 16px; font-weight: 700; color: #2E3B47; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.topbar-logo span { background: #2676FF; color: #fff; border-radius: 6px; padding: 2px 8px; font-size: 13px; }
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
 .page-nav { display: flex; gap: 2px; margin-left: 8px; }
@@ -15,10 +14,17 @@ body { font-family: 'Poppins', sans-serif; background: #F4F5F7; color: #2E3B47; 
 
 /* Series toggle */
 .series-toggle { display: flex; gap: 0; border: 1px solid #E7E7E7; border-radius: 8px; overflow: hidden; }
-.series-btn { padding: 6px 18px; background: #fff; border: none; cursor: pointer; font-family: 'Poppins', sans-serif; font-size: 13px; font-weight: 500; color: #69727A; transition: all 0.15s; }
+.series-btn { padding: 6px 18px; background: #fff; border: none; cursor: pointer; font-family: 'Poppins', sans-serif; font-size: 13px; font-weight: 500; color: #69727A; transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .series-btn.active[data-series="po"] { background: #2676FF; color: #fff; }
 .series-btn.active[data-series="rei"] { background: #26463D; color: #fff; }
 .series-btn:not(.active):hover { background: #F4F5F7; }
+
+/* PO button shows the Innago logo — blue variant on the white/inactive state,
+   white variant once active (blue background), per brand logo-on-background rules. */
+.po-logo { height: 16px; display: block; }
+.po-logo-white { display: none; }
+.series-btn.active .po-logo-blue { display: none; }
+.series-btn.active .po-logo-white { display: block; }
 
 /* Fields */
 .field { display: flex; flex-direction: column; gap: 4px; }
